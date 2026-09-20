@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.local.json
+runs/
+models/
+.cache/
+data/*.jsonl
+*.log
+*.pem
+*.key

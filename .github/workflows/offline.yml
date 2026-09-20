@@ -1,0 +1,21 @@
+name: Offline verification
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Unit tests (stdlib only, no model API)
+        run: python3 -m unittest discover -s tests -v
+      - name: CLI smoke without paid services
+        run: |
+          python3 jev_lab.py dataset --out data/smoke.jsonl
+          python3 jev_lab.py run --data data/smoke.jsonl --config config/rules.json --out runs/rules --limit 90
+          python3 jev_lab.py run --data data/smoke.jsonl --config config/jev.json --out runs/dry --limit 90
+          python3 jev_lab.py simulate --steps 100 --episodes 2000 --error-rate 0.01 --detection-rate 0.9 --out runs/simulation.json
+          python3 -c "import json; r=json.load(open('runs/dry/summary.json')); assert r['ledger']['network_requests']==0; assert r['overall']['accuracy_over_requested'] is None; print('NO NETWORK REQUESTS; NO REAL MODEL BENCHMARK')"

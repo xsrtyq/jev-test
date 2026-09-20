@@ -1,0 +1,18 @@
+{
+  "kind": "llm",
+  "model": "SET_VERIFIED_MODEL_ID",
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "api_key_env": "OPENAI_API_KEY",
+  "timeout_s": 30,
+  "max_calls": 90,
+  "max_payload_bytes": 32000,
+  "max_output_tokens": 256,
+  "max_tokens_field": "max_completion_tokens",
+  "response_format": "json_schema",
+  "budget_usd": 2,
+  "reserve_usd": 0.05,
+  "input_usd_per_million": null,
+  "cached_input_usd_per_million": null,
+  "output_usd_per_million": null,
+  "price_verified_at": ""
+}

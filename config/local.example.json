@@ -1,0 +1,8 @@
+{
+  "kind": "systemone_local",
+  "model": "SET_INSTALLED_MODEL_AND_REVISION",
+  "endpoint": "http://127.0.0.1:8000/v1/systemone",
+  "timeout_s": 60,
+  "max_calls": 90,
+  "max_payload_bytes": 32000
+}
