@@ -204,3 +204,67 @@ Measured model-side usage using the configured public list prices:
 The interesting exploratory signal is **reasoning-token displacement**: the direct Jev advisory coincided with about 41.5% fewer DeepSeek reasoning tokens than raw and lower DeepSeek latency. However, after adding the Jev call itself, the estimated direct pipeline cost was about $0.00182725 vs raw $0.00150906 across these 9 cases. With the user's A2Agent group discount the absolute relay bill may be lower; do not mix that billing discount with model-capability claims.
 
 Because accuracy is at ceiling, do not run quality/dev unchanged just to collect more translations/order seeds. The next decision-assist benchmark should increase semantic difficulty/headroom: conflicting evidence, missing information, misleading assistant claims, near-neighbor failure classes, and cases where both `inspect_more` and an apparently confident direct label are plausible. Preserve raw/neutral/direct/signals pairing and keep a fresh calibration/test split.
+
+## hard v0.2 升级
+
+quick/dev 已经出现 9/9 ceiling，因此不要继续直接跑旧 quality。新的 `hard` suite 是全新数据版本 `decision-assist-hard-0.2.0-authored`，不会覆盖或事后改写旧 quick 结果。
+
+每个 split 有 4 个新 family × zh/en/mixed = 12 个 case records。dev 包含：
+
+- 已撤回授权 + 旧审批 + staging dry-run 混杂；
+- 支付请求已写入 socket 但响应丢失，幂等状态未知；
+- 单次 502 同时存在服务 degraded 与可疑 payload，证据不足；
+- “旧 OAuth scope 表”可能相关也可能无关，必须保留 inspect 状态。
+
+calibration/test 使用不同 family，不与 dev 共用语义题目。
+
+### 五个 arm
+
+hard 不再只有四路，而是：
+
+1. `raw`
+2. `neutral`
+3. `jev_direct`
+4. `jev_signals`
+5. `wrong_direct`
+
+`wrong_direct` 是**已知错误、由 benchmark 人工构造的高置信 advice**。它不是 Jev 输出，也绝不用于计算 Jev 准确率。唯一目的：测下游 LLM 在收到一个看起来很自信、但实际上错误的先验时会不会盲从。
+
+报告单独给出：
+
+- wrong advice 被跟随次数；
+- raw 正确时，被 wrong advice 带错的次数；
+- action/failure/context 三类分别的 harmed。
+
+### 相同输入重复与顺序平衡
+
+Jev direct/signals 每个 case 只调用一次并冻结，然后所有下游 arm **各跑两次**。这样：
+
+- 可以看到同一个 DeepSeek 输入自身的随机翻转；
+- Jev advice 不会因为重复而重新抽样，避免把 Jev 波动和 LLM 波动混在一起；
+- 每个 case 的五个 arm 采用固定、预先写入 plan 的循环平衡顺序，不再永远 raw→neutral→direct→signals。
+
+这不是完美的随机交叉试验，但能显著降低“某个 arm 总在服务器更热/更冷的时间段执行”的固定顺序偏差。
+
+### hard/dev 规模
+
+- 12 case records
+- 24 Jev 请求：每 case 一次 direct + 一次 signals
+- 120 DeepSeek 请求：12 case × 2 repeat × 5 arms
+- 所有输出仍只是标签；无真实工具执行
+
+A2Agent 配置当前 max_requests=120，hard/dev 正好触及该上限；应用内预算保护仍为 $0.75，Jev 为 $0.25。若任意请求出现协议/计量错误，整轮 fail-closed，不自动重试。
+
+### 下一次运行
+
+GitHub → Actions → **Jev decision assist benchmark**
+
+- confirm_jev_paid = true
+- confirm_llm_paid = true
+- downstream_model = a2agent_deepseek_v4_flash
+- suite = hard
+- split = dev
+- question_language = auto
+
+hard/dev 过关后先分析 raw 是否仍触顶、repeat flip、wrong-advice susceptibility、direct/signals helped/harmed、reasoning-token displacement。只有 dev 有鉴别力且没有 benchmark 缺陷，才进入 hard/calibration；不要先跑 hard/test。
+
