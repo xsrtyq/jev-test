@@ -189,7 +189,7 @@ class ContractTests(unittest.TestCase):
 class RunnerTests(unittest.TestCase):
     def test_quick_request_count(self):self.assertEqual(make_plan()['max_model_requests'],18)
     def test_retrieval_request_count(self):self.assertEqual(make_plan("retrieval")['max_model_requests'],12)
-    def test_hard_retrieval_request_count(self):self.assertEqual(make_plan("retrieval_hard")['max_model_requests'],12)
+    def test_hard_retrieval_request_count(self):self.assertEqual(make_plan("retrieval_hard")['max_model_requests'],24)
     def test_hard_retrieval_archive_and_gold_separation(self):
         ep=retrieval_hard_lab.dataset("dev")[0]
         self.assertEqual(len(ep["state"]["blocks"]),64);self.assertNotIn("gold",ep["state"])
@@ -197,6 +197,11 @@ class RunnerTests(unittest.TestCase):
     def test_hard_retrieval_candidate_state_bounded(self):
         ep=retrieval_hard_lab.dataset("dev")[0];rank=retrieval_hard_lab.hybrid_ranking(ep["state"])
         self.assertEqual(len(rank),64);self.assertEqual(len(set(rank[:16])),16)
+    def test_hard_retrieval_uses_semantic_rationale_questions(self):
+        ep=retrieval_hard_lab.dataset("dev")[0]
+        q,m=retrieval_hard_lab.semantic_questions(ep["state"],"zh")
+        self.assertEqual(len(q),64);self.assertEqual(len(m),64)
+        self.assertTrue(all("决策理由或证据" in x["instructions"] for x in q.values()))
     def test_retrieval_questions_cover_blocks(self):
         ep=dataset("dev",seeds=(1,))[0];s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
         q,m=retrieval_lab.questions(s,"zh");self.assertEqual(len(q),len(s["blocks"]));self.assertEqual(len(m),len(q))
