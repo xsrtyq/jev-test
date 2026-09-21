@@ -1,0 +1,74 @@
+{
+  "source_sha256": {
+    "context-hard-v04.zip": "d0bc6855bd211b1f045118111de7222f6097884773ddc8a96e9ba1d2c57fd7c4",
+    "context-hard-calibration.zip": "e68af25cdc5e85794b82d227e2c63ea651e37df5217169b2c71955e0b2389d48",
+    "context-hard-test.zip": "11374b2c5756092bd879c58ab38552f939f08241467d8e7f46d488b4b3f2db8e",
+    "assist-hard-complete.zip": "ec5398f448dce0f6b0e1ad78bb85264f2a014b2bb32b2b634affebad551d518f",
+    "assist-hard-resume-proxy-zh.zip": "f05d471a8719491021543d5575d2a8312a0045f930ea6294dc015fe36fb67e51"
+  },
+  "context": {
+    "dev": {
+      "records": 12,
+      "full64_top1": 12,
+      "prefilter_top16": 6
+    },
+    "calibration": {
+      "records": 12,
+      "full64_top1": 12,
+      "prefilter_top16": 6
+    },
+    "test": {
+      "records": 12,
+      "full64_top1": 12,
+      "prefilter_top16": 4
+    }
+  },
+  "assist": {
+    "raw": {
+      "attempts": 24,
+      "correct_and_completed": 24,
+      "output_caps": 0,
+      "input_tokens": 21924,
+      "output_tokens": 9293,
+      "reasoning_tokens": 9096
+    },
+    "neutral": {
+      "attempts": 24,
+      "correct_and_completed": 23,
+      "output_caps": 1,
+      "input_tokens": 25712,
+      "output_tokens": 10506,
+      "reasoning_tokens": 10311
+    },
+    "jev_direct": {
+      "attempts": 24,
+      "correct_and_completed": 24,
+      "output_caps": 0,
+      "input_tokens": 25492,
+      "output_tokens": 10444,
+      "reasoning_tokens": 10247
+    },
+    "jev_signals": {
+      "attempts": 24,
+      "correct_and_completed": 21,
+      "output_caps": 2,
+      "input_tokens": 25192,
+      "output_tokens": 11738,
+      "reasoning_tokens": 11563
+    },
+    "wrong_direct": {
+      "attempts": 24,
+      "correct_and_completed": 23,
+      "output_caps": 0,
+      "input_tokens": 26294,
+      "output_tokens": 8291,
+      "reasoning_tokens": 8088
+    }
+  },
+  "status": "recomputed_from_existing_artifacts_no_new_calls",
+  "limitations": [
+    "The old wrong_direct prompt explicitly disclosed synthetic_known_wrong to the model; not a blinded robustness test.",
+    "Old retrieval distractors and single-target templates do not establish production-scale retrieval quality.",
+    "No result establishes universal inferiority of sparse retrieval or superiority over a multilingual embedding baseline."
+  ]
+}

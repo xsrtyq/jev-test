@@ -1,0 +1,119 @@
+name: Jev evidence-first v0.5
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Start with smoke; do not run all stages at once
+        type: choice
+        required: true
+        options: [smoke, retrieval128, retrieval256, e2e128, e2e256]
+        default: smoke
+      split:
+        description: dev first; calibration/test are held-out families
+        type: choice
+        required: true
+        options: [dev, calibration, test]
+        default: dev
+      confirm_jev_paid:
+        description: Authorize bounded TypeSafe API usage
+        type: boolean
+        required: true
+        default: false
+      confirm_llm_paid:
+        description: Authorize A2Agent Flash usage (smoke/e2e need BOTH boxes)
+        type: boolean
+        required: true
+        default: false
+      case_id:
+        description: Optional exact case ID; blank runs the stage's full plan
+        type: string
+        required: false
+        default: ''
+      resume_run:
+        description: Optional prior run ID with identical plan/protocol; uncertain sends are NOT retried
+        type: string
+        required: false
+        default: ''
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: jev-evidence-v05-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  experiment:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Offline tests before any credentials are exposed
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -W error -m py_compile evidence_lab/*.py
+      - name: Freeze inputs
+        env:
+          STAGE: ${{ inputs.stage }}
+          SPLIT: ${{ inputs.split }}
+          CASE_ID: ${{ inputs.case_id }}
+        run: |
+          args=(--stage "$STAGE" --split "$SPLIT" --out evidence-plan.json)
+          if [ -n "$CASE_ID" ]; then args+=(--case-id "$CASE_ID"); fi
+          python3 -m evidence_lab plan "${args[@]}"
+      - name: Retrieve optional resume artifact
+        id: previous
+        if: inputs.resume_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RESUME_RUN: ${{ inputs.resume_run }}
+        run: |
+          [[ "$RESUME_RUN" =~ ^[0-9]+$ ]] || exit 2
+          gh run download "$RESUME_RUN" --pattern 'jev-evidence-v05-*' --dir prior-evidence
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from evidence_lab.gateway import scan
+          scan('prior-evidence')
+          found=list(Path('prior-evidence').rglob('manifest.json'))
+          if len(found)!=1: raise SystemExit('ambiguous_resume_artifact')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('directory='+str(found[0].parent)+'\n')
+          PY
+      - name: Run bounded experiment
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
+          JEV_LIVE: ${{ inputs.confirm_jev_paid }}
+          LLM_LIVE: ${{ inputs.confirm_llm_paid }}
+          RESUME_DIR: ${{ steps.previous.outputs.directory }}
+        run: |
+          args=(--plan evidence-plan.json --out evidence-run)
+          if [ "$JEV_LIVE" = true ]; then args+=(--allow-jev-paid); fi
+          if [ "$LLM_LIVE" = true ]; then args+=(--allow-llm-paid); fi
+          if [ -n "$RESUME_DIR" ]; then args+=(--resume "$RESUME_DIR"); fi
+          python3 -m evidence_lab run "${args[@]}"
+      - name: Scan synthetic artifacts for credentials
+        id: scan
+        if: always()
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
+        run: |
+          if [ ! -d evidence-run ]; then echo 'safe=false' >> "$GITHUB_OUTPUT"; exit 0; fi
+          python3 -m evidence_lab scan evidence-run
+          echo 'safe=true' >> "$GITHUB_OUTPUT"
+      - name: Publish result and boundaries
+        if: always() && steps.scan.outputs.safe == 'true'
+        run: |
+          if [ -f evidence-run/report.md ]; then cat evidence-run/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+          echo 'A complete run is not a passed quality gate. No real operations were executed.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && steps.scan.outputs.safe == 'true'
+        with:
+          name: jev-evidence-v05-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence-run/
+          retention-days: 30
+          if-no-files-found: error

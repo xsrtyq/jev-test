@@ -1,0 +1,26 @@
+name: Evidence v0.5 offline verification
+on:
+  push:
+    paths: ['evidence_lab/**', 'tests/test_evidence_lab.py', '.github/workflows/evidence-*.yml']
+  pull_request:
+    paths: ['evidence_lab/**', 'tests/test_evidence_lab.py', '.github/workflows/evidence-*.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: All repository tests without model credentials
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -W error -m py_compile evidence_lab/*.py
+      - name: New CLI end-to-end dry run
+        run: |
+          python3 -m evidence_lab plan --stage smoke --out evidence-plan.json
+          python3 -m evidence_lab run --plan evidence-plan.json --out evidence-offline
+          python3 -m evidence_lab scan evidence-offline
+          python3 -c "import json; s=json.load(open('evidence-offline/summary.json')); assert s['newly_sent_requests']==0; assert s['stop_reason'] is None; assert s['recorded_downstream_trials']==12; assert s['arms']['raw']['grounded_success_over_expected'] is None"
