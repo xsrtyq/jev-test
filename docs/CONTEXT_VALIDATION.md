@@ -37,3 +37,17 @@ The run exposed two benchmark-design problems. First, the provisional `needed` g
 Commit `cdd77c8` separates direct-evidence labels from policy closure and makes future retrieval target a neutral historical reference that is not an initial requirement. Commit `5c62d60` fixes a Python newline regression found by CI. Both offline workflows pass on `5c62d60`. The old quick artifact remains immutable evidence and is not retroactively rescored as the new benchmark.
 
 Decision after revised quick run `35577897610`: 18/18 requests succeeded; 92,011 input tokens; known model-cost subtotal $0.003864462; client p50 about 198 ms and p95 about 294 ms. All language/primitive groups retained direct evidence and required policy evidence with no corrected high-confidence binary diagnostic errors; serialized byte reduction was about 24%–30%. However, six conditions actually archived the later target and exercised recovery, and the existing lexical fallback recovered only 1/6. The successful case was zh/payment/signals; English and mixed recovery failed. Signals archived the neutral future reference in 5/6 cases, Choice in 1/6, Score in 0/6, showing the expected tradeoff: more aggressive curation increases dependence on recovery. Therefore `quality` remains paused. A new isolated `retrieval/dev` suite compares lexical, structured-anchor and Jev semantic retrieval before any further scaling.
+
+## 2026-09-21 isolated retrieval/dev live run (run 35579241228)
+
+Workflow UI ended red, but the experiment itself completed: all 12/12 real Jev requests returned OK, summary.json and all 12 result rows are complete. The failure occurred afterwards while creating failures.jsonl: generic context code tried to read retrieval rows as model_result.metrics. Commit a8cd377 fixes the branch order; 9cff709 adds a live-fake regression test. Both offline workflows pass. Do not rerun this paid experiment just to turn the card green.
+
+Measured retrieval result on dev (4 template families × zh/en/mixed, one seed):
+- Jev semantic retrieval: top-1 12/12, top-4 12/12. Mean target Noul probability = 0.86. Minimum target-vs-runner-up margin = 0.38; all targets ranked first.
+- deterministic lexical top-4: 4/12 (33.3%) — zh 4/4, en 0/4, mixed 0/4.
+- deterministic structured-anchor top-4: 10/12 (83.3%) — zh 4/4, en 2/4, mixed 4/4.
+- Jev input = 38,135 tokens, known model cost = $0.00160167, client p50 ≈ 166.8 ms, p95 ≈ 262.9 ms.
+
+Target probability by language: zh mean 0.8425, en 0.9075, mixed 0.83. Lowest target probability was 0.73 (session/mixed), yet its runner-up was only 0.17. This is a strong dev smoke signal for Jev as an archive semantic retriever, not proof of production recall.
+
+Important limitation: target notes intentionally contain recognizable historical references/paths and the later query explicitly requests a historical reference. The dev result may therefore be easier than open-ended real coding recall. The code/prompt is now frozen for this retrieval experiment; next use retrieval/calibration on unseen template families. Only if calibration remains strong should the untouched retrieval/test split be run once. Context quality expansion remains paused until this generalization check.
