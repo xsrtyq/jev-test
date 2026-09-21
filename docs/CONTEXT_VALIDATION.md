@@ -65,3 +65,13 @@ A separate implementation bug was found in the deterministic structured baseline
 Consequence: the current retrieval benchmark does **not** establish incremental value for Jev over a correct deterministic structured retriever. It establishes that Jev can retrieve the intended item into top-4 on all 24 dev+calibration language variants, but the deterministic structured strategy also does so after the bug fix. Do not run the current retrieval/test split yet: it is likely too easy and uses the same obvious anchor structure.
 
 Next benchmark should be harder and newly versioned: larger archives, multiple competing paths/IDs, queries asking for reasons/decisions/previously rejected approaches rather than literally asking for a historical path, and separate measurement of candidate recall vs Jev reranking. A fresh untouched test split is required after redesign.
+## 2026-09-21 retrieval_hard v0.4 dev live run (run 35587967298)
+
+12/12 records completed, 24 Jev requests succeeded. Total input 221,306 tokens; known model-cost subtotal $0.009294852; client p50 ≈423 ms, p95 ≈530 ms.
+
+The deterministic prefilter is the bottleneck: Top-16 candidate recall = 6/12 overall (zh 3/4, en 2/4, mixed 1/4); deterministic hybrid Top-4 = 4/12. When the target is actually present in Top-16, Jev reranks it to Top-1/Top-4 in 6/6. Jev scoring the full 64-block archive ranks the target Top-1 in 12/12, with target probability 0.83–0.95 (mean ≈0.903).
+
+Candidate-only Jev path: 47,984 input tokens, ~$0.002015, median client latency ≈363 ms. Full-64 Jev path: 173,322 input tokens, ~$0.007280, median ≈497 ms. This is a small synthetic run; do not generalize the latency scaling beyond it.
+
+Interpretation: on this dev set, semantic retrieval itself is strong while lexical/metadata prefiltering—especially cross-language/mixed—is the limiting stage. Do not rerun dev. Next run the frozen v0.4 retrieval_hard on calibration. If that generalizes, test sharded semantic retrieval for archives larger than one Jev state window rather than aggressively pruning by lexical similarity.
+
