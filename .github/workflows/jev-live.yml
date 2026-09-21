@@ -1,0 +1,87 @@
+name: Jev live smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_paid:
+        description: 'Authorize paid Jev calls; verify model/price in TypeSafe first. Unchecked = dry run.'
+        type: boolean
+        required: true
+        default: false
+      case_count:
+        description: 'Requests: 30 is 10 original cases x 3 language variants (all task families).'
+        type: choice
+        default: '30'
+        options: ['9', '30', '90']
+      variant:
+        description: 'Start with base; other variants are separate manual runs.'
+        type: choice
+        default: base
+        options: [base, reverse_options, injection, distractor]
+      question_language:
+        description: 'auto follows sample language; en changes question template only.'
+        type: choice
+        default: auto
+        options: [auto, zh, en]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jev-live-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Offline verification before any model call
+        run: |
+          python3 -c "import sys; assert sys.version_info >= (3, 11)"
+          python3 -m unittest discover -s tests -v
+      - name: Run bounded experiment
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_paid && secrets.TYPESAFE_API_KEY || '' }}
+          LIVE_AUTHORIZED: ${{ inputs.confirm_paid }}
+          CASE_COUNT: ${{ inputs.case_count }}
+          VARIANT: ${{ inputs.variant }}
+          QUESTION_LANGUAGE: ${{ inputs.question_language }}
+        run: |
+          args=(--out cloud-run --case-count "$CASE_COUNT" --variant "$VARIANT" --question-language "$QUESTION_LANGUAGE")
+          if [ "$LIVE_AUTHORIZED" = "true" ]; then
+            args+=(--allow-paid)
+          fi
+          python3 cloud_smoke.py "${args[@]}"
+      - name: Check artifacts before upload
+        if: always()
+        id: scan
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_paid && secrets.TYPESAFE_API_KEY || '' }}
+        run: |
+          if [ ! -d cloud-run ]; then
+            echo 'safe=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 cloud_smoke.py --out cloud-run --scan-only
+          echo 'safe=true' >> "$GITHUB_OUTPUT"
+      - name: Publish report summary
+        if: always() && steps.scan.outputs.safe == 'true'
+        run: |
+          if [ -f cloud-run/jev/report.md ]; then
+            cat cloud-run/jev/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'Read plan.json and summary.json: dry runs are not model benchmarks; unknown costs are not zero.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save experiment artifacts
+        if: always() && steps.scan.outputs.safe == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jev-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cloud-run/
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: false
