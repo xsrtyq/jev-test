@@ -19,10 +19,10 @@ on:
         options: [a2agent_deepseek_v4_flash, openai_gpt_5_6_luna]
         default: a2agent_deepseek_v4_flash
       suite:
-        description: Start with quick
+        description: quick=protocol smoke; hard=conflict/repeat/wrong-advice benchmark
         required: true
         type: choice
-        options: [quick, quality]
+        options: [quick, hard, quality]
         default: quick
       split:
         description: Use dev first; do not tune on test
