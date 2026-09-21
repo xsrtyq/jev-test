@@ -100,6 +100,9 @@ def _records(rows,arm):
                 out.append((row,trial,trial["scores"][arm],trial["calls"][arm]))
     return out
 
+def _all_arm_calls(rows,arm):
+    return [trial["calls"][arm] for row in rows for trial in row["trials"] if arm in trial["calls"]]
+
 def _acc(rows,arm):
     rs=_records(rows,arm);return None if not rs else sum(x[2] for x in rs)/len(rs)
 
@@ -157,19 +160,20 @@ def summarize(plan,rows,jev,llm):
     for (arm,pos),vals in position.items():
         position_diag[f"{arm}@{pos}"]={"n":len(vals),"accuracy":sum(x[0] for x in vals)/len(vals),
                                       "reasoning_tokens":sum((x[1].get("usage") or {}).get("reasoning_tokens",0) for x in vals)}
-    llm_usage={arm:_call_stats([x[3] for x in _records(rows,arm)]) for arm in HARD_ARMS}
+    llm_usage={arm:_call_stats(_all_arm_calls(rows,arm)) for arm in HARD_ARMS}
     jev_direct_calls=[r["jev"]["direct_call"] for r in rows];jev_signal_calls=[r["jev"]["signals_call"] for r in rows]
     pipeline_usage={
         "raw":dict(llm_usage["raw"]),"neutral":dict(llm_usage["neutral"]),
         "wrong_direct":dict(llm_usage["wrong_direct"]),
-        "jev_direct":_call_stats(jev_direct_calls+[x[3] for x in _records(rows,"jev_direct")]),
-        "jev_signals":_call_stats(jev_signal_calls+[x[3] for x in _records(rows,"jev_signals")])
+        "jev_direct":_call_stats(jev_direct_calls+_all_arm_calls(rows,"jev_direct")),
+        "jev_signals":_call_stats(jev_signal_calls+_all_arm_calls(rows,"jev_signals"))
     }
-    wrong_followed=wrong_harm=raw_correct_pairs=0
+    wrong_followed=wrong_harm=raw_correct_pairs=wrong_call_count=0
     for row in rows:
         wrong_label=row["wrong_advice"]["choice"]
         for trial in row["trials"]:
             wd=trial["decisions"].get("wrong_direct");raw=trial["scores"].get("raw");wscore=trial["scores"].get("wrong_direct")
+            if "wrong_direct" in trial["calls"]: wrong_call_count+=1
             if wd is not None:
                 wrong_followed+=wd==wrong_label
             if raw is not None and wscore is not None:
@@ -180,7 +184,7 @@ def summarize(plan,rows,jev,llm):
             "execution":"live_both" if jev.live and llm.live else "offline",
             "planned_records":len(plan["items"]),"completed_records":len(rows),"statuses":dict(Counter(r["status"] for r in rows)),
             "arms":arms,"paired_vs_raw":paired,"by_language":by_language,"by_task":by_task,
-            "wrong_advice":{"followed":wrong_followed,"trials":sum(len(r["trials"]) for r in rows),
+            "wrong_advice":{"followed":wrong_followed,"trials":wrong_call_count,
                             "raw_correct_pairs":raw_correct_pairs,"harmed_when_raw_correct":wrong_harm},
             "position_diagnostics":position_diag,"llm_arm_usage":llm_usage,"pipeline_usage":pipeline_usage,
             "jev_direct_diagnostic_accuracy":sum(jev_direct_correct)/len(jev_direct_correct) if jev_direct_correct else None,
