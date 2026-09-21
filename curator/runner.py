@@ -9,8 +9,9 @@ from pathlib import Path
 from .core import *
 from .fixtures import dataset, episode, TEMPLATES, SPLIT, perturb, DATASET_VERSION
 from .client import Client, DEFAULT, scan, validate_config
+from . import retrieval as retrieval_lab
 
-SUITES=("quick","quality","robustness","scaling","fanout","replay")
+SUITES=("quick","quality","robustness","retrieval","scaling","fanout","replay")
 
 def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
     if suite not in SUITES or split not in {"dev","calibration","test"} or steps not in {10,20,50}:
@@ -27,6 +28,8 @@ def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
         for ep in pool:
             for v in ("base","repeat","reverse_options","reverse_blocks","injection","short_view"):
                 add(perturb(ep,v),variant=v,repeat=int(v=="repeat"))
+    elif suite=="retrieval":
+        for ep in dataset(split,seeds=(1,)): add(ep,"retrieval")
     elif suite=="scaling":
         for ep in pool:
             template=next(t for t in TEMPLATES if t[0]==ep["family"])
@@ -41,7 +44,12 @@ def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
     random.Random(seed).shuffle(items)
     calls=0
     for i,it in enumerate(items):
-        ep=it["episode"];q,_=questions(ep["state"],it["method"],"en" if ep["language"]=="en" else "zh")
+        ep=it["episode"]
+        if suite=="retrieval":
+            s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
+            q,_=retrieval_lab.questions(s,"en" if ep["language"]=="en" else "zh")
+        else:
+            q,_=questions(ep["state"],it["method"],"en" if ep["language"]=="en" else "zh")
         batches=(len(q)+it["batch_questions"]-1)//it["batch_questions"] if it["batch_questions"] else 1
         calls+=len(checkpoints(steps)) if suite=="replay" else batches
         it["item_id"]=f"item-{i:04d}"
@@ -180,7 +188,17 @@ def group_bootstrap(pairs, seed=1729):
 def summarize(plan,rows):
     calls=[c for r in rows for c in r["calls"]];sent=[c for c in calls if c["request_sent"]]
     by={};deltas=[]
-    if plan["suite"]!="replay":
+    if plan["suite"]=="retrieval":
+        for language in ("zh","en","mixed"):
+            items=[r for r in rows if r["language"]==language]
+            good=[r for r in items if r.get("model_result") is not None]
+            by[language]={"planned_records":len(items),"usable_records":len(good),
+                          "lexical_top4_recall":statistics.mean(r["retrieval_baselines"]["lexical"]["topk_hit"] for r in items) if items else None,
+                          "structured_top4_recall":statistics.mean(r["retrieval_baselines"]["structured"]["topk_hit"] for r in items) if items else None,
+                          "jev_top1_recall":statistics.mean(r["model_result"]["top1_hit"] for r in good) if good else None,
+                          "jev_top4_recall":statistics.mean(r["model_result"]["topk_hit"] for r in good) if good else None,
+                          "mean_target_probability":statistics.mean(next(iter(r["model_result"]["target_probabilities"].values())) for r in good) if good else None}
+    elif plan["suite"]!="replay":
         for language in ("zh","en","mixed"):
             for method in METHODS:
                 items=[r for r in rows if r["language"]==language and r["method"]==method]
@@ -235,9 +253,17 @@ def markdown(summary):
          "**这是合成场景的证据保留测试，不是完整 coding 任务成功率。**", "",
          f"真实模型请求：{summary['model_requests']}；已知模型费用小计：${summary['known_cost_subtotal_usd']:.6f}；未计量请求：{summary['unmetered_requests']}。", "",
          "|组|可评分记录/检查点|必要证据平均召回|遗漏证据记录数|", "|---|---:|---:|---:|"]
-    for k,v in summary["by_language_method_or_policy"].items():
-        recall=v.get("mean_evidence_recall")
-        out.append(f"|{k}|{v.get('usable_records',v.get('scored_checkpoints',0))}|{'unknown' if recall is None else f'{recall:.3f}'}|{v.get('records_missing_evidence',v.get('missing_evidence_checkpoints',0))}|")
+    if summary["suite"]=="retrieval":
+        out=["# Context Curator 检索实验报告","",f"执行：`{summary['execution']}`；split=`{summary['split']}`。","",
+             "**此实验把后续目标视为归档，隔离测试检索，不测压缩策略。**","",
+             f"真实模型请求：{summary['model_requests']}；已知模型费用小计：${summary['known_cost_subtotal_usd']:.6f}；未计量请求：{summary['unmetered_requests']}。","",
+             "|语言|记录|lexical top4|structured top4|Jev top1|Jev top4|","|---|---:|---:|---:|---:|---:|"]
+        for k,v in summary["by_language_method_or_policy"].items():
+            out.append(f"|{k}|{v['usable_records']}|{v['lexical_top4_recall']:.3f}|{v['structured_top4_recall']:.3f}|{v['jev_top1_recall']:.3f}|{v['jev_top4_recall']:.3f}|")
+    else:
+        for k,v in summary["by_language_method_or_policy"].items():
+            recall=v.get("mean_evidence_recall")
+            out.append(f"|{k}|{v.get('usable_records',v.get('scored_checkpoints',0))}|{'unknown' if recall is None else f'{recall:.3f}'}|{v.get('records_missing_evidence',v.get('missing_evidence_checkpoints',0))}|")
     out += ["", "## 解释边界", "", *["- "+x for x in summary["caveats"]], "", "逐条失败、有效输入、候选召回、引用依赖、序列回放和费用见 results.jsonl / summary.json；不把 API 返回成功解释为任务成功。", ""]
     return "\n".join(out)
 
@@ -263,7 +289,7 @@ def execute(plan,out,cfg=None,live=False,budget=3000,question_language="auto",se
     client=Client(**kwargs);rows=[]
     with (out/"results.jsonl").open("x",encoding="utf-8") as f:
         for item in plan["items"]:
-            row=replay_item(item,client,plan["steps"],budget,question_language) if plan["suite"]=="replay" else call_item(item,client,budget,question_language)
+            row=replay_item(item,client,plan["steps"],budget,question_language) if plan["suite"]=="replay" else retrieval_lab.run_item(item,client,question_language) if plan["suite"]=="retrieval" else call_item(item,client,budget,question_language)
             rows.append(row);f.write(dumps(row)+"\n");f.flush()
             if live and client.stop:break
     result=summarize(plan,rows)
@@ -271,7 +297,9 @@ def execute(plan,out,cfg=None,live=False,budget=3000,question_language="auto",se
     (out/"summary.json").write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     (out/"report.md").write_text(markdown(result),encoding="utf-8")
     failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and (not r["model_result"]["metrics"]["all_required_evidence_present"] or r["model_result"]["selection"]["budget_overflow"]))]
-    if plan["suite"]=="replay":
+    if plan["suite"]=="retrieval":
+        failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and not r["model_result"]["topk_hit"])]
+    elif plan["suite"]=="replay":
         failures=[r for r in rows if r["status"] in {"error","blocked"} or any(
             x.get("metrics") is not None and (not x["metrics"]["all_required_evidence_present"] or x.get("status")=="blocked_budget")
             for x in r["histories"]["model"])]
