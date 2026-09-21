@@ -11,6 +11,7 @@ from curator.core import *
 from curator.fixtures import *
 from curator.client import Client, DEFAULT, validate_config, scan
 from curator.runner import *
+from curator import retrieval as retrieval_lab
 from curator.__main__ import main
 
 
@@ -186,6 +187,13 @@ class ContractTests(unittest.TestCase):
 
 class RunnerTests(unittest.TestCase):
     def test_quick_request_count(self):self.assertEqual(make_plan()['max_model_requests'],18)
+    def test_retrieval_request_count(self):self.assertEqual(make_plan("retrieval")['max_model_requests'],12)
+    def test_retrieval_questions_cover_blocks(self):
+        ep=dataset("dev",seeds=(1,))[0];s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
+        q,m=retrieval_lab.questions(s,"zh");self.assertEqual(len(q),len(s["blocks"]));self.assertEqual(len(m),len(q))
+    def test_structured_retrieval_deterministic(self):
+        ep=dataset("dev",seeds=(1,))[0];s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
+        self.assertEqual(retrieval_lab.candidates(s,"structured",4),retrieval_lab.candidates(s,"structured",4))
     def test_all_suites_bounded(self):
         for s in SUITES:
             for steps in (10,20,50):self.assertLessEqual(make_plan(s,steps=steps)['max_model_requests'],240)
