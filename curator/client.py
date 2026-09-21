@@ -31,7 +31,7 @@ def transport(endpoint, body, key, timeout):
         raise ExperimentError("transport_error") from None
 
 def validate_config(cfg):
-    allowed=set(DEFAULT)|{"max_completion_tokens","cached_input_per_million"}
+    allowed=set(DEFAULT)|{"max_completion_tokens","cached_input_per_million","reasoning_effort"}
     if set(cfg)-allowed:raise ExperimentError("unknown_config_key_or_embedded_secret")
     if cfg.get("backend") not in {"jev","llm"}:raise ExperimentError("unknown_backend")
     endpoint={"jev":"https://api.typesafe.ai/v1/systemone","llm":"https://api.openai.com/v1/chat/completions"}[cfg["backend"]]
@@ -55,6 +55,8 @@ def validate_config(cfg):
         value=cfg["max_completion_tokens"]
         if isinstance(value,bool) or not isinstance(value,int) or not 1<=value<=8192:
             raise ExperimentError("invalid_completion_limit")
+    if "reasoning_effort" in cfg and cfg["reasoning_effort"] not in {"none","low","medium","high","xhigh","max"}:
+        raise ExperimentError("invalid_reasoning_effort")
     if cfg["key_env"] != {"jev":"TYPESAFE_API_KEY","llm":"OPENAI_API_KEY"}[cfg["backend"]]:raise ExperimentError("unexpected_secret_environment_name")
     return cfg
 
@@ -89,6 +91,7 @@ class Client:
             schema={"type":"object","properties":{k:{"type":"string","enum":list(q["criteria"])} for k,q in qs.items()},"required":list(qs),"additionalProperties":False}
             body={"model":self.cfg["model"],"messages":[{"role":"system","content":"Return only the requested labels as a JSON object. No explanations."},{"role":"user","content":dumps({"state":state,"questions":qs})}],
                   "response_format":{"type":"json_schema","json_schema":{"name":"decisions","strict":True,"schema":schema}},"max_completion_tokens":self.cfg.get("max_completion_tokens",1024)}
+            if "reasoning_effort" in self.cfg: body["reasoning_effort"]=self.cfg["reasoning_effort"]
             row["request_sha256"]=sha(body);row["request_bytes"]=size(body)
         else:body=payload
         if not self.live:return row
