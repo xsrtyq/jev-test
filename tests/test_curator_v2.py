@@ -220,6 +220,12 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(s['model_requests'],0)
             report=(Path(td)/'out/report.md').read_text(encoding='utf-8')
             self.assertIn('unknown',report)
+    def test_retrieval_live_fake_writes_failures_file(self):
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ,{'TYPESAFE_API_KEY':'TEST-ONLY'}):
+            p=make_plan('retrieval');p['items']=p['items'][:1];p['max_model_requests']=1
+            s=execute(p,Path(td)/'out',live=True,send=fake_provider)
+            self.assertEqual(s['model_requests'],1)
+            self.assertTrue((Path(td)/'out/failures.jsonl').is_file())
     def test_no_overwrite(self):
         with tempfile.TemporaryDirectory() as td:self.assertRaises(ExperimentError,execute,make_plan(),td)
     def test_scan_rejects_key_pattern(self):
