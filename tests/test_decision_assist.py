@@ -81,6 +81,18 @@ class AssistFixtureTests(unittest.TestCase):
         self.assertEqual(p["arms"],list(HARD_ARMS))
         self.assertTrue(all(len(x["arm_orders"])==2 for x in p["items"]))
         self.assertTrue(all(sorted(o)==sorted(HARD_ARMS) for x in p["items"] for o in x["arm_orders"]))
+    def test_hard_resume_plan_preserves_frozen_case_order(self):
+        full=hard_runner.make_plan("dev")
+        target="hard-proxy_or_payload-1-zh"
+        original=next(x for x in full["items"] if x["case"]["case_id"]==target)
+        resumed=hard_runner.make_plan("dev",case_id=target)
+        self.assertEqual(resumed["case_records"],1)
+        self.assertEqual(resumed["jev_requests_max"],2)
+        self.assertEqual(resumed["llm_requests_max"],10)
+        self.assertEqual(resumed["items"][0]["item_id"],original["item_id"])
+        self.assertEqual(resumed["items"][0]["arm_orders"],original["arm_orders"])
+        with self.assertRaises(ExperimentError):
+            hard_runner.make_plan("dev",case_id="missing-case")
     def test_known_wrong_advice_is_always_wrong(self):
         for case in hard_fixtures.dataset("all"):
             wrong=known_wrong_direct(case)
