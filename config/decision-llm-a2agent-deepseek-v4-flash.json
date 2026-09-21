@@ -14,5 +14,5 @@
   "socket_timeout_s": 30,
   "run_deadline_s": 600,
   "max_requests": 120,
-  "max_completion_tokens": 256
+  "max_completion_tokens": 1024
 }
