@@ -213,6 +213,13 @@ class RunnerTests(unittest.TestCase):
             p=make_plan();p['items']=p['items'][:1];p['max_model_requests']=1
             s=execute(p,Path(td)/'out',live=True,send=fake_provider)
             self.assertEqual(s['model_requests'],1);self.assertTrue((Path(td)/'out/report.md').is_file())
+    def test_retrieval_dry_run_report_handles_unknown_metrics(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=make_plan('retrieval')
+            s=execute(p,Path(td)/'out',live=False)
+            self.assertEqual(s['model_requests'],0)
+            report=(Path(td)/'out/report.md').read_text(encoding='utf-8')
+            self.assertIn('unknown',report)
     def test_no_overwrite(self):
         with tempfile.TemporaryDirectory() as td:self.assertRaises(ExperimentError,execute,make_plan(),td)
     def test_scan_rejects_key_pattern(self):
