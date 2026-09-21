@@ -10,8 +10,9 @@ from .core import *
 from .fixtures import dataset, episode, TEMPLATES, SPLIT, perturb, DATASET_VERSION
 from .client import Client, DEFAULT, scan, validate_config
 from . import retrieval as retrieval_lab
+from . import retrieval_hard as retrieval_hard_lab
 
-SUITES=("quick","quality","robustness","retrieval","scaling","fanout","replay")
+SUITES=("quick","quality","robustness","retrieval","retrieval_hard","scaling","fanout","replay")
 
 def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
     if suite not in SUITES or split not in {"dev","calibration","test"} or steps not in {10,20,50}:
@@ -30,6 +31,8 @@ def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
                 add(perturb(ep,v),variant=v,repeat=int(v=="repeat"))
     elif suite=="retrieval":
         for ep in dataset(split,seeds=(1,)): add(ep,"retrieval")
+    elif suite=="retrieval_hard":
+        for ep in retrieval_hard_lab.dataset(split): add(ep,"retrieval_hard")
     elif suite=="scaling":
         for ep in pool:
             template=next(t for t in TEMPLATES if t[0]==ep["family"])
@@ -47,6 +50,10 @@ def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
         ep=it["episode"]
         if suite=="retrieval":
             s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
+            q,_=retrieval_lab.questions(s,"en" if ep["language"]=="en" else "zh")
+        elif suite=="retrieval_hard":
+            candidate_ids=retrieval_hard_lab.hybrid_ranking(ep["state"])[:16]
+            s=deepcopy(ep["state"]);s["blocks"]=[b for b in s["blocks"] if b["id"] in set(candidate_ids)]
             q,_=retrieval_lab.questions(s,"en" if ep["language"]=="en" else "zh")
         else:
             q,_=questions(ep["state"],it["method"],"en" if ep["language"]=="en" else "zh")
@@ -188,7 +195,16 @@ def group_bootstrap(pairs, seed=1729):
 def summarize(plan,rows):
     calls=[c for r in rows for c in r["calls"]];sent=[c for c in calls if c["request_sent"]]
     by={};deltas=[]
-    if plan["suite"]=="retrieval":
+    if plan["suite"]=="retrieval_hard":
+        for language in ("zh","en","mixed"):
+            items=[r for r in rows if r["language"]==language]
+            good=[r for r in items if r.get("model_result") is not None]
+            by[language]={"planned_records":len(items),"usable_records":len(good),
+                          "candidate16_recall":statistics.mean(r["deterministic"]["candidate_recall"] for r in items) if items else None,
+                          "hybrid_top4_recall":statistics.mean(r["deterministic"]["hybrid_top4_hit"] for r in items) if items else None,
+                          "jev_top1_recall":statistics.mean(r["model_result"]["top1_hit"] for r in good) if good else None,
+                          "jev_top4_recall":statistics.mean(r["model_result"]["top4_hit"] for r in good) if good else None}
+    elif plan["suite"]=="retrieval":
         for language in ("zh","en","mixed"):
             items=[r for r in rows if r["language"]==language]
             good=[r for r in items if r.get("model_result") is not None]
@@ -253,7 +269,15 @@ def markdown(summary):
          "**这是合成场景的证据保留测试，不是完整 coding 任务成功率。**", "",
          f"真实模型请求：{summary['model_requests']}；已知模型费用小计：${summary['known_cost_subtotal_usd']:.6f}；未计量请求：{summary['unmetered_requests']}。", "",
          "|组|可评分记录/检查点|必要证据平均召回|遗漏证据记录数|", "|---|---:|---:|---:|"]
-    if summary["suite"]=="retrieval":
+    if summary["suite"]=="retrieval_hard":
+        out=["# Hard semantic retrieval report","",f"execution=`{summary['execution']}` split=`{summary['split']}`.","",
+             "**64-block archive -> deterministic top16 candidates -> Jev semantic rerank. No downstream LLM task is measured.**","",
+             f"real model requests: {summary['model_requests']}; known model-cost subtotal: ${summary['known_cost_subtotal_usd']:.6f}.","",
+             "|language|records|candidate16|hybrid top4|Jev top1|Jev top4|","|---|---:|---:|---:|---:|---:|"]
+        fmt=lambda x:"unknown" if x is None else f"{x:.3f}"
+        for k,v in summary["by_language_method_or_policy"].items():
+            out.append(f"|{k}|{v['usable_records']}|{fmt(v['candidate16_recall'])}|{fmt(v['hybrid_top4_recall'])}|{fmt(v['jev_top1_recall'])}|{fmt(v['jev_top4_recall'])}|")
+    elif summary["suite"]=="retrieval":
         out=["# Context Curator 检索实验报告","",f"执行：`{summary['execution']}`；split=`{summary['split']}`。","",
              "**此实验把后续目标视为归档，隔离测试检索，不测压缩策略。**","",
              f"真实模型请求：{summary['model_requests']}；已知模型费用小计：${summary['known_cost_subtotal_usd']:.6f}；未计量请求：{summary['unmetered_requests']}。","",
@@ -290,14 +314,16 @@ def execute(plan,out,cfg=None,live=False,budget=3000,question_language="auto",se
     client=Client(**kwargs);rows=[]
     with (out/"results.jsonl").open("x",encoding="utf-8") as f:
         for item in plan["items"]:
-            row=replay_item(item,client,plan["steps"],budget,question_language) if plan["suite"]=="replay" else retrieval_lab.run_item(item,client,question_language) if plan["suite"]=="retrieval" else call_item(item,client,budget,question_language)
+            row=replay_item(item,client,plan["steps"],budget,question_language) if plan["suite"]=="replay" else retrieval_hard_lab.run_item(item,client,question_language) if plan["suite"]=="retrieval_hard" else retrieval_lab.run_item(item,client,question_language) if plan["suite"]=="retrieval" else call_item(item,client,budget,question_language)
             rows.append(row);f.write(dumps(row)+"\n");f.flush()
             if live and client.stop:break
     result=summarize(plan,rows)
     result["backend_stop_reason"]=client.stop
     (out/"summary.json").write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     (out/"report.md").write_text(markdown(result),encoding="utf-8")
-    if plan["suite"]=="retrieval":
+    if plan["suite"]=="retrieval_hard":
+        failures=[r for r in rows if r["status"] in {"error","blocked"} or not r["deterministic"]["candidate_recall"] or (r.get("model_result") and not r["model_result"]["top4_hit"])]
+    elif plan["suite"]=="retrieval":
         failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and not r["model_result"]["topk_hit"])]
     elif plan["suite"]=="replay":
         failures=[r for r in rows if r["status"] in {"error","blocked"} or any(
