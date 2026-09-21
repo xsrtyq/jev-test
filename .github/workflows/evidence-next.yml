@@ -1,4 +1,4 @@
-name: Jev evidence-first v0.5
+name: Jev evidence-first v0.6
 on:
   workflow_dispatch:
     inputs:
@@ -38,7 +38,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: jev-evidence-v05-${{ github.repository }}
+  group: jev-evidence-v06-${{ github.repository }}
   cancel-in-progress: false
 jobs:
   experiment:
@@ -71,7 +71,7 @@ jobs:
           RESUME_RUN: ${{ inputs.resume_run }}
         run: |
           [[ "$RESUME_RUN" =~ ^[0-9]+$ ]] || exit 2
-          gh run download "$RESUME_RUN" --pattern 'jev-evidence-v05-*' --dir prior-evidence
+          gh run download "$RESUME_RUN" --pattern 'jev-evidence-v06-*' --dir prior-evidence
           python3 - <<'PY'
           import os
           from pathlib import Path
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always() && steps.scan.outputs.safe == 'true'
         with:
-          name: jev-evidence-v05-${{ github.run_id }}-${{ github.run_attempt }}
+          name: jev-evidence-v06-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence-run/
           retention-days: 30
           if-no-files-found: error
