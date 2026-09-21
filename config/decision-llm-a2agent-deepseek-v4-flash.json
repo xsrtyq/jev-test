@@ -1,0 +1,18 @@
+{
+  "backend": "openai_compatible",
+  "model": "deepseek-v4-flash",
+  "endpoint": "https://api.a2agent.me/v1/chat/completions",
+  "key_env": "A2AGENT_API_KEY",
+  "provider_label": "A2Agent relay -> DeepSeek V4 Flash",
+  "upstream_model_verified": false,
+  "structured_mode": "json_object",
+  "input_per_million": 0.14,
+  "output_per_million": 0.28,
+  "price_verified": "2026-09-21 A2Agent public model catalog list price; final billing follows the API-key group and may be discounted",
+  "budget_usd": 0.75,
+  "reserve_per_call": 0.005,
+  "socket_timeout_s": 30,
+  "run_deadline_s": 600,
+  "max_requests": 120,
+  "max_completion_tokens": 256
+}
