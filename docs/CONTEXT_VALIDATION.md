@@ -23,3 +23,17 @@
 每次手动运行的 $0.25 是应用内估算保护，不是跨运行或供应商发票硬限额。socket timeout 不能保证严格的单次总墙钟期限；程序在请求间检查总时限，并由 Actions job 上限补充。发生未知用量、协议错误或预算估计不足时停止，不自动重试。
 
 原始档案/身份元数据由受控测试环境提供，不含真实用户角色/权限提取器。归档检索是 lexical 基线，不是已证明可靠的召回器；失败必须留在统计中。冻结数据的流程约束与哈希并不阻止操作者反复查看测试集，不能冒称形式化防泄漏。
+
+## 2026-09-21 quick live run
+
+Run `35576946439` used commit `6e834eaa508b28831b8a28545a2ba65225daca5c`: 18/18 real Jev requests succeeded, 92,092 input tokens, known model-cost subtotal $0.003867864, client p50 about 409 ms and p95 about 564 ms.
+
+Across the six condition records per primitive, policy-level required-evidence recall was 1.0 and serialized byte reduction was about 24%–29%. This includes deterministic PINNED constraints and dependency closure, so it is NOT Jev-only accuracy. Using Choice rows as one non-independent view, model policy recall was 1.0; lexical/equal-score about 0.833; recency 0.5 at roughly similar byte reduction. Only two template families were present, so this is a smoke signal, not a statistical result.
+
+Choice used 24,370 input tokens (~$0.001024, p50 ~390 ms); Score 21,926 (~$0.000921, p50 ~369 ms); four Noul signals 45,796 (~$0.001923, p50 ~470 ms). The signals form asked four times as many questions, so parallelism kept latency growth modest, but it consumed materially more input and showed no retention benefit on this tiny set.
+
+The run exposed two benchmark-design problems. First, the provisional `needed` gold mixed semantic direct evidence with deterministic obligations (PINNED constraints and tool-call/result closure). Six apparent high-confidence `needed=no` errors were on such structural/policy items; their `constraint` signal was 0.93–0.96. They must not be reported as six high-confidence semantic failures. Second, the later-retrieval gold was already present in the initial selected context, so `recovery=1.0` did not exercise archive retrieval.
+
+Commit `cdd77c8` separates direct-evidence labels from policy closure and makes future retrieval target a neutral historical reference that is not an initial requirement. Commit `5c62d60` fixes a Python newline regression found by CI. Both offline workflows pass on `5c62d60`. The old quick artifact remains immutable evidence and is not retroactively rescored as the new benchmark.
+
+Decision: do not run `quality` yet. Re-run `quick/dev` once on current `main` so retrieval and semantic diagnostics are genuinely exercised; only then decide whether to proceed.
