@@ -136,6 +136,11 @@ class Client:
                     details=usage.get("prompt_tokens_details",{})
                     cached=details.get("cached_tokens") if isinstance(details,dict) else None
                     row["usage"]["cached_input_tokens"]=cached
+                    completion_details=usage.get("completion_tokens_details",{})
+                    reasoning_tokens=completion_details.get("reasoning_tokens") if isinstance(completion_details,dict) else None
+                    if reasoning_tokens is not None:
+                        if not isinstance(reasoning_tokens,int) or isinstance(reasoning_tokens,bool) or not 0<=reasoning_tokens<=usage[ok]:raise ExperimentError("invalid_reasoning_usage")
+                        row["usage"]["reasoning_tokens"]=reasoning_tokens
                     if cached is not None:
                         if not isinstance(cached,int) or isinstance(cached,bool) or not 0<=cached<=usage[ik]:raise ExperimentError("invalid_cached_usage")
                         cacheprice=self.cfg.get("cached_input_per_million",self.cfg["input_per_million"])
@@ -145,7 +150,13 @@ class Client:
             else:self.stop="usage_missing"
             if llm:
                 c=data["choices"][0]
-                if c.get("finish_reason")!="stop" or c["message"].get("refusal"):raise ExperimentError("llm_incomplete_or_refused")
+                finish_reason=c.get("finish_reason")
+                refusal=c.get("message",{}).get("refusal")
+                row["finish_reason"]=finish_reason
+                row["refused"]=bool(refusal)
+                if refusal:raise ExperimentError("llm_refused")
+                if finish_reason=="length":raise ExperimentError("llm_output_limit")
+                if finish_reason!="stop":raise ExperimentError("llm_incomplete")
                 labels=loads(c["message"]["content"])
                 if not isinstance(labels,dict) or set(labels)!=set(qs) or any(v not in qs[k]["criteria"] for k,v in labels.items()):raise ExperimentError("llm_schema_error")
                 row["answers"]={k:{"type":"choice","choice":v,"probabilities":None} for k,v in labels.items()}
