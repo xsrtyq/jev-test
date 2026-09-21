@@ -51,3 +51,17 @@ Measured retrieval result on dev (4 template families × zh/en/mixed, one seed):
 Target probability by language: zh mean 0.8425, en 0.9075, mixed 0.83. Lowest target probability was 0.73 (session/mixed), yet its runner-up was only 0.17. This is a strong dev smoke signal for Jev as an archive semantic retriever, not proof of production recall.
 
 Important limitation: target notes intentionally contain recognizable historical references/paths and the later query explicitly requests a historical reference. The dev result may therefore be easier than open-ended real coding recall. The code/prompt is now frozen for this retrieval experiment; next use retrieval/calibration on unseen template families. Only if calibration remains strong should the untouched retrieval/test split be run once. Context quality expansion remains paused until this generalization check.
+
+## 2026-09-21 isolated retrieval/calibration live run (run 35579713526)
+
+12/12 real Jev requests succeeded. Input 38,187 tokens; known model-cost subtotal $0.001603854; client p50 ≈ 377.3 ms and p95 ≈ 417.8 ms.
+
+Raw calibration report: Jev top-1 9/12 (75%), top-4 12/12 (100%). By language, top-1 = 3/4 for zh, en and mixed; top-4 = 4/4 for all three. Mean target probability: zh 0.74, en 0.8325, mixed 0.7275.
+
+All three top-1 misses are the same `paths` template family. The query asks for a generic historical reference/path, while that scenario contains multiple plausible paths (old input path, current actual path, historical screenshot index). Jev ranks the intended screenshot index 2nd/3rd rather than first. Therefore top-1 is partly benchmark-ambiguous here; top-4 is the cleaner signal.
+
+A separate implementation bug was found in the deterministic structured baseline: raw regex strings had double-escaped `\\b`, `\\d`, `\\s` and Unicode ranges, so obvious path/ID anchors were under-detected. Recomputing the existing dev and calibration artifacts offline with the corrected regex yields structured top-4 = 12/12 on dev and 12/12 on calibration (24/24 combined). No paid calls are needed for this correction. Commit `fdc82c5` fixes the regex and `98e2488` adds explicit anchor-shape tests; both offline CI workflows pass.
+
+Consequence: the current retrieval benchmark does **not** establish incremental value for Jev over a correct deterministic structured retriever. It establishes that Jev can retrieve the intended item into top-4 on all 24 dev+calibration language variants, but the deterministic structured strategy also does so after the bug fix. Do not run the current retrieval/test split yet: it is likely too easy and uses the same obvious anchor structure.
+
+Next benchmark should be harder and newly versioned: larger archives, multiple competing paths/IDs, queries asking for reasons/decisions/previously rejected approaches rather than literally asking for a historical path, and separate measurement of candidate recall vs Jev reranking. A fresh untouched test split is required after redesign.
