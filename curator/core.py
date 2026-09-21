@@ -306,6 +306,9 @@ def recover(state, selection, query, top_k=4, byte_budget=8000):
 def score(selection, gold, advice=None, threshold=.9):
     selected = set(selection["selected"])
     needed, exact = set(gold["needed"]), set(gold["exact"])
+    direct = set(gold.get("direct_evidence", exact))
+    pinned_required = needed & set(selection.get("pinned", []))
+    semantic_required = needed - pinned_required
     kept = {b["id"]:b for b in selection["packet"]["blocks"]}
     exact_hits = sum(bid in kept and gold["exact"][bid] in kept[bid]["text"] for bid in exact)
     raw_false_demotion=[]; high_false_demotion=[]
@@ -315,6 +318,12 @@ def score(selection, gold, advice=None, threshold=.9):
         if archive_p is not None and archive_p >= threshold: high_false_demotion.append(bid)
     return {"needed_count":len(needed), "needed_retained":len(needed&selected),
             "evidence_recall":len(needed&selected)/len(needed) if needed else None,
+            "semantic_required_count":len(semantic_required),
+            "semantic_evidence_recall":len(semantic_required&selected)/len(semantic_required) if semantic_required else None,
+            "direct_evidence_count":len(direct),
+            "direct_evidence_recall":len(direct&selected)/len(direct) if direct else None,
+            "pinned_required_count":len(pinned_required),
+            "pinned_required_retained":len(pinned_required&selected),
             "exact_count":len(exact), "exact_retained":exact_hits,
             "all_required_evidence_present":needed.issubset(selected),
             "stale_selected":sorted(set(gold.get("stale",[])) & selected),

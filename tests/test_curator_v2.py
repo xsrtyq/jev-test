@@ -58,6 +58,14 @@ class DatasetTests(unittest.TestCase):
             by={b['id']:b for b in ep['state']['blocks']}
             for bid,value in ep['gold']['exact'].items():self.assertIn(value,by[bid]['text'])
     def test_early_state_has_no_later_query(self):self.assertNotIn('later_query',visible(self.ep,2))
+    def test_direct_evidence_is_not_policy_closure(self):
+        self.assertEqual(len(self.ep["gold"]["direct_evidence"]),1)
+        by={b["id"]:b for b in self.ep["state"]["blocks"]}
+        self.assertEqual(by[self.ep["gold"]["direct_evidence"][0]]["kind"],"tool_result")
+        self.assertTrue(set(self.ep["gold"]["direct_evidence"]).issubset(self.ep["gold"]["needed"]))
+    def test_later_retrieval_target_is_not_initial_requirement(self):
+        self.assertFalse(set(self.ep["gold"]["later_needed"]) & set(self.ep["gold"]["needed"]))
+        self.assertEqual(len(self.ep["gold"]["later_needed"]),1)
 
 class PolicyTests(unittest.TestCase):
     def setUp(self):self.ep=dataset('dev',seeds=(1,))[0];self.state=self.ep['state']
@@ -95,6 +103,10 @@ class PolicyTests(unittest.TestCase):
         self.assertRaises(ExperimentError,recover,bad,r,self.ep['later_query'])
     def test_retrieval_uses_query_not_gold(self):
         r=select(self.state);x=recover(self.state,r,self.ep['later_query']);self.assertEqual(x['trigger'],'observable_checkpoint_query_not_gold');self.assertNotIn('gold',x)
+    def test_recovery_metric_can_be_unexercised(self):
+        r=select(self.state,mode='keep_all')
+        later=set(self.ep["gold"]["later_needed"])
+        self.assertFalse(later-set(r["selected"]))
     def test_empty_recovery_budget_not_oracle_success(self):
         r=select(self.state,budget=1800);x=recover(self.state,r,self.ep['later_query'],byte_budget=1)
         self.assertEqual(x['selected'],r['selected']);self.assertTrue(x['unresolved'])

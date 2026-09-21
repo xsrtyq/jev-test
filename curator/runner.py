@@ -91,7 +91,7 @@ def call_item(item,client,budget=3000,question_language="auto"):
             row["budget_sweep_no_extra_api"][str(cap)]={"selection":sweep,"metrics":score(sweep,ep["gold"],advice)}
         row["binary_diagnostics_provisional"]=[]
         if item["method"]=="signals":
-            truth_sets={"needed":set(ep["gold"]["needed"]),"constraint":pinned_ids(state),"exact":set(ep["gold"]["exact"])}
+            # `needed` is direct answer evidence. PINNED constraints and call/result closure are policy obligations, not positive labels for this semantic question.\n            truth_sets={"needed":set(ep["gold"].get("direct_evidence",ep["gold"]["exact"])),"constraint":pinned_ids(state),"exact":set(ep["gold"]["exact"])}
             for bid,values in advice.items():
                 for dimension,truth in truth_sets.items():
                     p=values[dimension];y=int(bid in truth)
@@ -99,7 +99,13 @@ def call_item(item,client,budget=3000,question_language="auto"):
         recovered=recover(state,chosen,ep["later_query"],top_k=4,byte_budget=budget*2)
         # Retrieval only changes the selected packet. Its immutable archive remains full.
         later_gold={"needed":ep["gold"]["later_needed"],"exact":ep["gold"]["later_exact"],"stale":[]}
-        row["retrieval_probe"]={"retrieval":recovered,"metrics":score(recovered,later_gold),"later_query":ep["later_query"]}
+        archived_before=set(later_gold["needed"])-set(chosen["selected"])
+        recovered_archived=archived_before & set(recovered["selected"])
+        row["retrieval_probe"]={"retrieval":recovered,"metrics":score(recovered,later_gold),"later_query":ep["later_query"],
+                                "archived_later_needed_before":sorted(archived_before),
+                                "retrieval_exercised":bool(archived_before),
+                                "archived_recovery_recall":len(recovered_archived)/len(archived_before) if archived_before else None,
+                                "recovered_archived_ids":sorted(recovered_archived)}
         row["prefix_stability_proxy"]={"common_serialized_utf8_bytes":prefix_common_bytes(chosen["packet"],recovered["packet"]),"actual_cache_hits":None,"kv_memory":None}
     return row
 
@@ -180,12 +186,11 @@ def summarize(plan,rows):
                 good=[r for r in items if r["model_result"] is not None]
                 metrics=[r["model_result"]["metrics"] for r in good]
                 by[f"{language}/{method}"]={"planned_records":len(items),"usable_records":len(good),
-                    "mean_evidence_recall":statistics.mean(m["evidence_recall"] for m in metrics) if metrics else None,
-                    "records_missing_evidence":sum(not m["all_required_evidence_present"] for m in metrics),
+                    "mean_evidence_recall":statistics.mean(m["evidence_recall"] for m in metrics) if metrics else None,\n                    "mean_semantic_evidence_recall":statistics.mean(m["semantic_evidence_recall"] for m in metrics if m["semantic_evidence_recall"] is not None) if any(m["semantic_evidence_recall"] is not None for m in metrics) else None,\n                    "mean_direct_evidence_recall":statistics.mean(m["direct_evidence_recall"] for m in metrics if m["direct_evidence_recall"] is not None) if any(m["direct_evidence_recall"] is not None for m in metrics) else None,\n                    "records_missing_evidence":sum(not m["all_required_evidence_present"] for m in metrics),\n                    "retrieval_exercised_records":sum(bool(r.get("retrieval_probe",{}).get("retrieval_exercised")) for r in good),\n                    "mean_archived_recovery_recall":statistics.mean(r["retrieval_probe"]["archived_recovery_recall"] for r in good if r.get("retrieval_probe",{}).get("archived_recovery_recall") is not None) if any(r.get("retrieval_probe",{}).get("archived_recovery_recall") is not None for r in good) else None,
                     "raw_high_probability_false_demotions":sum(len(m["high_probability_false_demotion_ids"]) for m in metrics),
                     "budget_blocked":sum(r["model_result"]["selection"]["budget_overflow"] for r in good),
                     "mean_serialized_byte_reduction":statistics.mean(r["model_result"]["selection"]["byte_reduction"] for r in good) if good else None}
-                for r in good:deltas.append((r["family"],r["model_result"]["metrics"]["evidence_recall"]-r["baselines"]["lexical"]["metrics"]["evidence_recall"]))
+                for r in good:deltas.append((r["family"],r["model_result"]["metrics"]["semantic_evidence_recall"]-r["baselines"]["lexical"]["metrics"]["semantic_evidence_recall"]))
     else:
         for mode in ("keep_all","recency","lexical","model"):
             items=[(r,x) for r in rows for x in r["histories"][mode] if x.get("metrics") is not None]
