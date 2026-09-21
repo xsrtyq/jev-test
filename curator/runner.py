@@ -91,7 +91,8 @@ def call_item(item,client,budget=3000,question_language="auto"):
             row["budget_sweep_no_extra_api"][str(cap)]={"selection":sweep,"metrics":score(sweep,ep["gold"],advice)}
         row["binary_diagnostics_provisional"]=[]
         if item["method"]=="signals":
-            # `needed` is direct answer evidence. PINNED constraints and call/result closure are policy obligations, not positive labels for this semantic question.\n            truth_sets={"needed":set(ep["gold"].get("direct_evidence",ep["gold"]["exact"])),"constraint":pinned_ids(state),"exact":set(ep["gold"]["exact"])}
+            # `needed` is direct answer evidence. PINNED constraints and call/result closure are policy obligations, not positive labels for this semantic question.
+            truth_sets={"needed":set(ep["gold"].get("direct_evidence",ep["gold"]["exact"])),"constraint":pinned_ids(state),"exact":set(ep["gold"]["exact"])}
             for bid,values in advice.items():
                 for dimension,truth in truth_sets.items():
                     p=values[dimension];y=int(bid in truth)
@@ -186,7 +187,12 @@ def summarize(plan,rows):
                 good=[r for r in items if r["model_result"] is not None]
                 metrics=[r["model_result"]["metrics"] for r in good]
                 by[f"{language}/{method}"]={"planned_records":len(items),"usable_records":len(good),
-                    "mean_evidence_recall":statistics.mean(m["evidence_recall"] for m in metrics) if metrics else None,\n                    "mean_semantic_evidence_recall":statistics.mean(m["semantic_evidence_recall"] for m in metrics if m["semantic_evidence_recall"] is not None) if any(m["semantic_evidence_recall"] is not None for m in metrics) else None,\n                    "mean_direct_evidence_recall":statistics.mean(m["direct_evidence_recall"] for m in metrics if m["direct_evidence_recall"] is not None) if any(m["direct_evidence_recall"] is not None for m in metrics) else None,\n                    "records_missing_evidence":sum(not m["all_required_evidence_present"] for m in metrics),\n                    "retrieval_exercised_records":sum(bool(r.get("retrieval_probe",{}).get("retrieval_exercised")) for r in good),\n                    "mean_archived_recovery_recall":statistics.mean(r["retrieval_probe"]["archived_recovery_recall"] for r in good if r.get("retrieval_probe",{}).get("archived_recovery_recall") is not None) if any(r.get("retrieval_probe",{}).get("archived_recovery_recall") is not None for r in good) else None,
+                    "mean_evidence_recall":statistics.mean(m["evidence_recall"] for m in metrics) if metrics else None,
+                    "mean_semantic_evidence_recall":statistics.mean(m["semantic_evidence_recall"] for m in metrics if m["semantic_evidence_recall"] is not None) if any(m["semantic_evidence_recall"] is not None for m in metrics) else None,
+                    "mean_direct_evidence_recall":statistics.mean(m["direct_evidence_recall"] for m in metrics if m["direct_evidence_recall"] is not None) if any(m["direct_evidence_recall"] is not None for m in metrics) else None,
+                    "records_missing_evidence":sum(not m["all_required_evidence_present"] for m in metrics),
+                    "retrieval_exercised_records":sum(bool(r.get("retrieval_probe",{}).get("retrieval_exercised")) for r in good),
+                    "mean_archived_recovery_recall":statistics.mean(r["retrieval_probe"]["archived_recovery_recall"] for r in good if r.get("retrieval_probe",{}).get("archived_recovery_recall") is not None) if any(r.get("retrieval_probe",{}).get("archived_recovery_recall") is not None for r in good) else None,
                     "raw_high_probability_false_demotions":sum(len(m["high_probability_false_demotion_ids"]) for m in metrics),
                     "budget_blocked":sum(r["model_result"]["selection"]["budget_overflow"] for r in good),
                     "mean_serialized_byte_reduction":statistics.mean(r["model_result"]["selection"]["byte_reduction"] for r in good) if good else None}
