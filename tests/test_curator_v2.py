@@ -194,6 +194,11 @@ class RunnerTests(unittest.TestCase):
     def test_structured_retrieval_deterministic(self):
         ep=dataset("dev",seeds=(1,))[0];s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
         self.assertEqual(retrieval_lab.candidates(s,"structured",4),retrieval_lab.candidates(s,"structured",4))
+    def test_structured_anchor_regexes_match_real_shapes(self):
+        self.assertTrue(retrieval_lab.anchor_features("archive/session-raw.log")["has_anchor"])
+        self.assertTrue(retrieval_lab.anchor_features("request_id=pay-r17")["has_anchor"])
+        self.assertTrue(retrieval_lab.anchor_features("MIGRATION-REVIEW-17")["has_anchor"])
+        self.assertTrue(retrieval_lab.anchor_features("D:/lab/cache/receipt.json")["has_anchor"])
     def test_all_suites_bounded(self):
         for s in SUITES:
             for steps in (10,20,50):self.assertLessEqual(make_plan(s,steps=steps)['max_model_requests'],240)
