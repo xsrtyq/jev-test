@@ -75,3 +75,22 @@ Candidate-only Jev path: 47,984 input tokens, ~$0.002015, median client latency 
 
 Interpretation: on this dev set, semantic retrieval itself is strong while lexical/metadata prefiltering—especially cross-language/mixed—is the limiting stage. Do not rerun dev. Next run the frozen v0.4 retrieval_hard on calibration. If that generalizes, test sharded semantic retrieval for archives larger than one Jev state window rather than aggressively pruning by lexical similarity.
 
+## 2026-09-21 retrieval_hard v0.4 calibration live run (run 35589853253)
+
+12/12 records completed; 24/24 Jev requests succeeded. Total input 221,645 tokens; known model-cost subtotal $0.00930909; client p50 ≈482.8 ms and p95 ≈836.8 ms.
+
+Calibration reproduces the dev split's central result:
+
+- deterministic Top-16 candidate recall = 6/12 overall;
+- deterministic hybrid Top-4 = 2/12 overall;
+- when the target is present in Top-16, Jev candidate rerank puts it Top-1 in 6/6;
+- Jev scoring the full 64-block archive puts the target Top-1 in 12/12 and Top-4 in 12/12.
+
+By language, Top-16 candidate recall is zh 3/4, en 3/4, mixed 0/4. Full-64 Jev is 4/4 Top-1 in zh, en and mixed. Mean full-64 target probability ≈0.924; minimum target-vs-runner-up margin ≈0.22, mean margin ≈0.689. The smaller margins are concentrated in the queue-concurrency family, but the target still ranks first.
+
+Cost/latency split: candidate-only Jev used 48,203 input tokens, ~$0.002025, p50 ≈397 ms; full-64 Jev used 173,442 input tokens, ~$0.007285, p50 ≈507 ms.
+
+Across dev + calibration, full-64 Jev is now 24/24 Top-1 on 8 held-out template families × three language forms, while deterministic Top-16 candidate recall is 12/24 and remains especially poor for mixed-language cases. This is still a synthetic authored benchmark, not production proof.
+
+Next step: freeze retrieval-hard v0.4 and run the untouched test split once. Do not tune prompts or thresholds before that run. If test preserves the result, move from single-archive experiments to sharded semantic retrieval at 128/256+ blocks and measure downstream task recovery, not just evidence ranking.
+
