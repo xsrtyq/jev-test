@@ -31,7 +31,7 @@ def transport(endpoint, body, key, timeout):
         raise ExperimentError("transport_error") from None
 
 def validate_config(cfg):
-    allowed=set(DEFAULT)|{"max_completion_tokens","cached_input_per_million","reasoning_effort","structured_mode","provider_label","upstream_model_verified"}
+    allowed=set(DEFAULT)|{"max_completion_tokens","cached_input_per_million","reasoning_effort","structured_mode","provider_label","upstream_model_verified","nonfatal_output_limit"}
     if set(cfg)-allowed:raise ExperimentError("unknown_config_key_or_embedded_secret")
     if cfg.get("backend") not in {"jev","llm","openai_compatible"}:raise ExperimentError("unknown_backend")
     endpoints={"jev":"https://api.typesafe.ai/v1/systemone","llm":"https://api.openai.com/v1/chat/completions","openai_compatible":"https://api.a2agent.me/v1/chat/completions"}
@@ -64,6 +64,8 @@ def validate_config(cfg):
         raise ExperimentError("invalid_provider_label")
     if "upstream_model_verified" in cfg and not isinstance(cfg["upstream_model_verified"],bool):
         raise ExperimentError("invalid_upstream_verification_flag")
+    if "nonfatal_output_limit" in cfg and not isinstance(cfg["nonfatal_output_limit"],bool):
+        raise ExperimentError("invalid_nonfatal_output_limit")
     expected_env={"jev":"TYPESAFE_API_KEY","llm":"OPENAI_API_KEY","openai_compatible":"A2AGENT_API_KEY"}[cfg["backend"]]
     if cfg["key_env"] != expected_env:raise ExperimentError("unexpected_secret_environment_name")
     return cfg
@@ -165,7 +167,11 @@ class Client:
                 if data["model"]!=self.cfg["model"]:raise ExperimentError("model_version_changed")
             row["model"]=data.get("model");row["status"]="ok";row["error"]=self.stop
         except ExperimentError as e:
-            row["error"]=str(e);self.stop=str(e);row["answers"]=None
+            row["error"]=str(e);row["answers"]=None
+            if str(e)=="llm_output_limit" and self.cfg.get("nonfatal_output_limit",False):
+                row["nonfatal"]=True
+            else:
+                self.stop=str(e)
         except Exception:
             row["error"]="unclassified_backend_failure";self.stop=row["error"];row["answers"]=None
         finally:
