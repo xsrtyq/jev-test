@@ -376,6 +376,26 @@ def summarize(plan, preps, trials, gateway):
             for arm in plan["arms"]:
                 group = [t for t in trials if t["family"] == c["family"] and t["language"] == c["language"] and t["arm"] == arm and t["metrics"] is not None]
                 breakdown[key][arm] = {"observed": len(group), "grounded_correct": sum(t["metrics"]["grounded_correct"] for t in group)}
+    retrieval_rows = [p for p in preps if p.get("metrics") is not None]
+    retrieval_summary = None
+    retrieval_by_language = {}
+    if retrieval_rows:
+        retrieval_summary = {
+            "cases": len(retrieval_rows),
+            "anchor_binding_present": sum(p["metrics"]["anchor_binding_present"] for p in retrieval_rows),
+            "conditioned_all_required_survived": sum(p["metrics"]["conditioned_local_survival_recall"] == 1 for p in retrieval_rows),
+            "selected_all_required": sum(p["metrics"]["all_required_present"] for p in retrieval_rows),
+            "mean_selected_recall": statistics.mean(p["metrics"]["selected_evidence_recall"] for p in retrieval_rows),
+            "rules_all_required": sum(p["metrics"]["rules_all_required_present"] for p in retrieval_rows),
+            "mean_packet_bytes": statistics.mean(p["selected"]["byte_count"] for p in retrieval_rows)}
+        for language in ("zh", "en", "mixed"):
+            group = [p for p in retrieval_rows if p["language"] == language]
+            if group:
+                retrieval_by_language[language] = {
+                    "cases": len(group),
+                    "anchor_binding_present": sum(p["metrics"]["anchor_binding_present"] for p in group),
+                    "selected_all_required": sum(p["metrics"]["all_required_present"] for p in group),
+                    "rules_all_required": sum(p["metrics"]["rules_all_required_present"] for p in group)}
     sent = [r for r in gateway.receipts if r["request_sent"] and not r.get("reused")]
     return {"version": VERSION, "stage": plan["stage"], "plan_hash": sha(plan),
             "execution": "live" if any(gateway.live.values()) else "offline_no_model_results",
@@ -383,6 +403,7 @@ def summarize(plan, preps, trials, gateway):
             "expected_downstream_trials": expected * len(plan["arms"]), "recorded_downstream_trials": len(trials),
             "stop_reason": gateway.stop, "arms": arms, "paired_vs_raw": paired,
             "repeat_consistency": repeat, "by_family_language": breakdown,
+            "retrieval_summary": retrieval_summary, "retrieval_by_language": retrieval_by_language,
             "retrieval_cases": [{"case_id": p["case_id"], "family": p["family"], "language": p["language"],
                                  "metrics": p["metrics"], "packet_bytes": p["selected"]["byte_count"]} for p in preps],
             "newly_sent_requests": len(sent), "known_bill_subtotal_usd": sum(r["cost_usd"] or 0 for r in sent),
@@ -400,6 +421,31 @@ def summarize(plan, preps, trials, gateway):
 def markdown(summary):
     def fmt(x):
         return "unknown" if x is None else f"{x:.4f}"
+    if not summary["arms"]:
+        r = summary["retrieval_summary"]
+        lines = ["# Evidence-first retrieval experiment", "",
+                 f"Execution: {summary['execution']}; stage: {summary['stage']}", "",
+                 f"Prepared cases: {summary['prepared_cases']}/{summary['expected_cases']}; newly sent calls: {summary['newly_sent_requests']}; "
+                 f"unknown usage: {summary['unmetered_requests']}; stop: {summary['stop_reason']}", ""]
+        if r is None:
+            lines += ["Retrieval quality: unknown (offline/no model results)."]
+        else:
+            lines += [
+                "| Metric | Result |", "|---|---:|",
+                f"| Anchor binding present | {r['anchor_binding_present']}/{r['cases']} |",
+                f"| All required survived conditioned local pass | {r['conditioned_all_required_survived']}/{r['cases']} |",
+                f"| Final packet contains all required evidence | {r['selected_all_required']}/{r['cases']} |",
+                f"| Rules packet contains all required evidence | {r['rules_all_required']}/{r['cases']} |",
+                f"| Mean final evidence recall | {r['mean_selected_recall']:.4f} |",
+                f"| Mean final packet bytes | {r['mean_packet_bytes']:.1f} |", "",
+                "| Language | Jev final complete | Rules complete |", "|---|---:|---:|"]
+            for lang, v in summary["retrieval_by_language"].items():
+                lines.append(f"| {lang} | {v['selected_all_required']}/{v['cases']} | {v['rules_all_required']}/{v['cases']} |")
+        lines += ["", "No downstream model was called in this stage. Retrieval probabilities are uncalibrated scores, not authorization.", "",
+                  "## Limits", ""]
+        lines.extend("- " + x for x in summary["limits"])
+        return "\n".join(lines) + "\n"
+
     lines = ["# Evidence-first experiment", "", f"Execution: {summary['execution']}; stage: {summary['stage']}", "",
              f"Prepared cases: {summary['prepared_cases']}/{summary['expected_cases']}; newly sent calls: {summary['newly_sent_requests']}; "
              f"unknown usage: {summary['unmetered_requests']}; stop: {summary['stop_reason']}", "",
