@@ -31,13 +31,14 @@ def transport(endpoint, body, key, timeout):
         raise ExperimentError("transport_error") from None
 
 def validate_config(cfg):
-    allowed=set(DEFAULT)|{"max_completion_tokens","cached_input_per_million","reasoning_effort"}
+    allowed=set(DEFAULT)|{"max_completion_tokens","cached_input_per_million","reasoning_effort","structured_mode","provider_label","upstream_model_verified"}
     if set(cfg)-allowed:raise ExperimentError("unknown_config_key_or_embedded_secret")
-    if cfg.get("backend") not in {"jev","llm"}:raise ExperimentError("unknown_backend")
-    endpoint={"jev":"https://api.typesafe.ai/v1/systemone","llm":"https://api.openai.com/v1/chat/completions"}[cfg["backend"]]
-    if cfg.get("endpoint")!=endpoint:raise ExperimentError("unapproved_endpoint")
+    if cfg.get("backend") not in {"jev","llm","openai_compatible"}:raise ExperimentError("unknown_backend")
+    endpoints={"jev":"https://api.typesafe.ai/v1/systemone","llm":"https://api.openai.com/v1/chat/completions","openai_compatible":"https://api.a2agent.me/v1/chat/completions"}
+    if cfg.get("endpoint")!=endpoints[cfg["backend"]]:raise ExperimentError("unapproved_endpoint")
     if not isinstance(cfg.get("model"),str) or not cfg["model"] or cfg["model"].startswith("SET_"):raise ExperimentError("verified_model_id_required")
     if cfg["backend"]=="jev" and cfg["model"]!="jev-1.13.0":raise ExperimentError("pin_jev_version_revalidate_before_upgrade")
+    if cfg["backend"]=="openai_compatible" and cfg["model"]!="deepseek-v4-flash":raise ExperimentError("pin_relay_model_revalidate_before_upgrade")
     for k in ("input_per_million","output_per_million","budget_usd","reserve_per_call","socket_timeout_s","run_deadline_s"):
         v=cfg.get(k)
         import math
@@ -57,7 +58,14 @@ def validate_config(cfg):
             raise ExperimentError("invalid_completion_limit")
     if "reasoning_effort" in cfg and cfg["reasoning_effort"] not in {"none","low","medium","high","xhigh","max"}:
         raise ExperimentError("invalid_reasoning_effort")
-    if cfg["key_env"] != {"jev":"TYPESAFE_API_KEY","llm":"OPENAI_API_KEY"}[cfg["backend"]]:raise ExperimentError("unexpected_secret_environment_name")
+    if "structured_mode" in cfg and cfg["structured_mode"] not in {"json_schema","json_object"}:
+        raise ExperimentError("invalid_structured_mode")
+    if "provider_label" in cfg and (not isinstance(cfg["provider_label"],str) or not cfg["provider_label"]):
+        raise ExperimentError("invalid_provider_label")
+    if "upstream_model_verified" in cfg and not isinstance(cfg["upstream_model_verified"],bool):
+        raise ExperimentError("invalid_upstream_verification_flag")
+    expected_env={"jev":"TYPESAFE_API_KEY","llm":"OPENAI_API_KEY","openai_compatible":"A2AGENT_API_KEY"}[cfg["backend"]]
+    if cfg["key_env"] != expected_env:raise ExperimentError("unexpected_secret_environment_name")
     return cfg
 
 class Client:
@@ -80,18 +88,30 @@ class Client:
         # Conservative byte guard. NOT a provider tokenizer or proof of the token limit.
         longest=max((size(q) for q in qs.values()),default=0)
         row={"status":"dry_run", "answers":None,"model":None,"usage":None,"cost_usd":None,"wall_ms":None,
+             "backend":self.cfg["backend"],"provider_label":self.cfg.get("provider_label"),"configured_model":self.cfg["model"],
+             "upstream_model_verified":self.cfg.get("upstream_model_verified"),
              "state_sha256":sha(state),"questions_sha256":sha(qs),"request_sha256":sha(payload),"state_bytes":size(state),
              "request_bytes":size(payload),"question_count":len(qs),"error":None,"request_sent":False}
         if size(state)+longest>28000 or size(payload)>56000:
             row.update(status="blocked",error="byte_guard_no_silent_truncation");return row
-        llm=self.cfg["backend"]=="llm"
+        llm=self.cfg["backend"] in {"llm","openai_compatible"}
         if llm:
             if any(q["type"]!="choice" for q in qs.values()):
                 row.update(status="blocked",error="compact_llm_baseline_choice_only");return row
             schema={"type":"object","properties":{k:{"type":"string","enum":list(q["criteria"])} for k,q in qs.items()},"required":list(qs),"additionalProperties":False}
-            body={"model":self.cfg["model"],"messages":[{"role":"system","content":"Return only the requested labels as a JSON object. No explanations."},{"role":"user","content":dumps({"state":state,"questions":qs})}],
-                  "response_format":{"type":"json_schema","json_schema":{"name":"decisions","strict":True,"schema":schema}},"max_completion_tokens":self.cfg.get("max_completion_tokens",1024)}
-            if "reasoning_effort" in self.cfg: body["reasoning_effort"]=self.cfg["reasoning_effort"]
+            structured=self.cfg.get("structured_mode","json_schema" if self.cfg["backend"]=="llm" else "json_object")
+            expected={k:list(q["criteria"]) for k,q in qs.items()}
+            system_text="Return one JSON object only. Use exactly these keys and one allowed string value for each key; no explanations. Allowed values: "+dumps(expected)
+            body={"model":self.cfg["model"],"messages":[{"role":"system","content":system_text},{"role":"user","content":dumps({"state":state,"questions":qs})}]}
+            if structured=="json_schema":
+                body["response_format"]={"type":"json_schema","json_schema":{"name":"decisions","strict":True,"schema":schema}}
+            else:
+                body["response_format"]={"type":"json_object"}
+            completion_limit=self.cfg.get("max_completion_tokens",1024)
+            if self.cfg["backend"]=="llm": body["max_completion_tokens"]=completion_limit
+            else: body["max_tokens"]=completion_limit
+            if self.cfg["backend"]=="llm" and "reasoning_effort" in self.cfg: body["reasoning_effort"]=self.cfg["reasoning_effort"]
+            row["structured_mode"]=structured
             row["request_sha256"]=sha(body);row["request_bytes"]=size(body)
         else:body=payload
         if not self.live:return row
@@ -132,7 +152,7 @@ class Client:
             else:
                 row["answers"]=parse_response(data,qs)
                 if data["model"]!=self.cfg["model"]:raise ExperimentError("model_version_changed")
-            row["model"]=data["model"];row["status"]="ok";row["error"]=self.stop
+            row["model"]=data.get("model");row["status"]="ok";row["error"]=self.stop
         except ExperimentError as e:
             row["error"]=str(e);self.stop=str(e);row["answers"]=None
         except Exception:
