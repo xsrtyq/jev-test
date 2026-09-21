@@ -25,8 +25,8 @@ A2_CFG={
  "backend":"openai_compatible","model":"deepseek-v4-flash","endpoint":"https://api.a2agent.me/v1/chat/completions",
  "key_env":"A2AGENT_API_KEY","provider_label":"A2Agent relay -> DeepSeek V4 Flash","upstream_model_verified":False,
  "structured_mode":"json_object","input_per_million":.14,"output_per_million":.28,"price_verified":"test fixture",
- "budget_usd":.75,"reserve_per_call":.005,"socket_timeout_s":30,"run_deadline_s":600,"max_requests":120,
- "max_completion_tokens":1024}
+ "budget_usd":.75,"reserve_per_call":.005,"socket_timeout_s":30,"run_deadline_s":780,"max_requests":120,
+ "max_completion_tokens":2048}
 
 def fake_jev(endpoint,body,key,timeout):
     answers={}
@@ -142,7 +142,7 @@ class AssistExecutionTests(unittest.TestCase):
         q=direct_question(case)
         def length_response(endpoint,body,key,timeout):
             return {"model":"deepseek-v4-flash","choices":[{"finish_reason":"length","message":{"content":"","refusal":None}}],
-                    "usage":{"prompt_tokens":100,"completion_tokens":1024}}
+                    "usage":{"prompt_tokens":100,"completion_tokens":2048}}
         with patch.dict(os.environ,{"A2AGENT_API_KEY":"TEST_A2"}):
             client=Client(A2_CFG,live=True,send=length_response)
             row=client.request(case["state"],q)
@@ -161,7 +161,7 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(s["llm_backend"]["requests"],4)
             self.assertTrue(all(x[0]=="https://api.a2agent.me/v1/chat/completions" for x in seen))
             self.assertTrue(all(x[1]["response_format"]=={"type":"json_object"} for x in seen))
-            self.assertTrue(all(x[1].get("max_tokens")==1024 and "max_completion_tokens" not in x[1] for x in seen))
+            self.assertTrue(all(x[1].get("max_tokens")==2048 and "max_completion_tokens" not in x[1] for x in seen))
     def test_hard_dry_run_and_one_item_fake_live(self):
         p=hard_runner.make_plan("dev")
         with tempfile.TemporaryDirectory() as td:
