@@ -259,7 +259,8 @@ def markdown(summary):
              f"真实模型请求：{summary['model_requests']}；已知模型费用小计：${summary['known_cost_subtotal_usd']:.6f}；未计量请求：{summary['unmetered_requests']}。","",
              "|语言|记录|lexical top4|structured top4|Jev top1|Jev top4|","|---|---:|---:|---:|---:|---:|"]
         for k,v in summary["by_language_method_or_policy"].items():
-            out.append(f"|{k}|{v['usable_records']}|{v['lexical_top4_recall']:.3f}|{v['structured_top4_recall']:.3f}|{v['jev_top1_recall']:.3f}|{v['jev_top4_recall']:.3f}|")
+            fmt=lambda x: "unknown" if x is None else f"{x:.3f}"
+            out.append(f"|{k}|{v['usable_records']}|{fmt(v['lexical_top4_recall'])}|{fmt(v['structured_top4_recall'])}|{fmt(v['jev_top1_recall'])}|{fmt(v['jev_top4_recall'])}|")
     else:
         for k,v in summary["by_language_method_or_policy"].items():
             recall=v.get("mean_evidence_recall")
