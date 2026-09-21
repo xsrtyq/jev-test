@@ -94,3 +94,32 @@ Across dev + calibration, full-64 Jev is now 24/24 Top-1 on 8 held-out template 
 
 Next step: freeze retrieval-hard v0.4 and run the untouched test split once. Do not tune prompts or thresholds before that run. If test preserves the result, move from single-archive experiments to sharded semantic retrieval at 128/256+ blocks and measure downstream task recovery, not just evidence ranking.
 
+## 2026-09-21 retrieval_hard v0.4 untouched test live run (run 35590461804)
+
+The frozen test split completed 12/12 records with 24/24 Jev requests successful. Total input was 221,324 tokens; known model-cost subtotal was $0.009295608; client p50 ≈309 ms and p95 ≈366 ms.
+
+The central result held on the untouched test families:
+
+- deterministic Top-16 candidate recall = 4/12;
+- deterministic hybrid Top-4 = 3/12;
+- when the target was present in Top-16, Jev candidate rerank put it Top-1 in 4/4;
+- Jev scoring the full 64-block archive put the target Top-1 in 12/12 and Top-4 in 12/12.
+
+By language, deterministic Top-16 candidate recall was zh 2/4, en 2/4, mixed 0/4. Full-64 Jev was 4/4 Top-1 in zh, en and mixed.
+
+Full-64 target probability on test ranged from 0.80 to 0.95 (mean ≈0.904). Target-vs-runner-up margin ranged from ≈0.20 to ≈0.85 (mean ≈0.608). The tightest test family was dependency_reason, but its target still ranked first in all three language forms.
+
+Cost/latency split on test:
+- candidate-only Jev: 47,872 input tokens, ~$0.002011, p50 ≈248 ms;
+- full-64 Jev: 173,452 input tokens, ~$0.007285, p50 ≈344 ms.
+
+Across dev + calibration + untouched test:
+- full-64 Jev Top-1 = 36/36 records across 12 authored template families × zh/en/mixed;
+- deterministic Top-16 candidate recall = 16/36;
+- deterministic hybrid Top-4 = 9/36;
+- mixed-language deterministic Top-16 recall = 1/12, while full-64 Jev Top-1 = 12/12.
+
+This freezes retrieval-hard v0.4. Do not continue tuning or rerunning this 64-block benchmark. It establishes a strong synthetic signal for Jev semantic retrieval and a clear failure mode for aggressive lexical/structured prefiltering, but it does not establish production task success or arbitrary-scale archive performance.
+
+Next research stage: sharded semantic retrieval at 128/256+ blocks, with shard selection based only on hard metadata boundaries (repo/project/scope/time bucket), Jev retrieval within each shard, cross-shard top-k merge, dependency closure, and then downstream LLM recovery/task-success measurement.
+
