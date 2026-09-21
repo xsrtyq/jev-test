@@ -114,6 +114,10 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(s["jev_backend"]["requests"],2)
             self.assertEqual(s["llm_backend"]["requests"],4)
             self.assertTrue((Path(td)/"out/failures.jsonl").is_file())
+            self.assertIn("llm_arm_usage",s)
+            self.assertIn("pipeline_usage",s)
+            self.assertEqual(s["llm_arm_usage"]["raw"]["requests"],1)
+            self.assertEqual(s["pipeline_usage"]["jev_direct"]["requests"],2)
     def test_a2agent_length_finish_reason_is_explicit(self):
         case=dataset("dev",seeds=(1,))[0]
         q=direct_question(case)
