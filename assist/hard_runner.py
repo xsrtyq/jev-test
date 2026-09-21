@@ -72,21 +72,25 @@ def run_item(item,jev,llm,question_language="auto"):
             else: state=advisory_state(case,arm)
             call=llm.request(state,dq);calls[arm]=call;positions[arm]=position
             label=decision_from_call(call);decisions[arm]=label;scores[arm]=score_label(case,label)
-            if call.get("status") in {"error","blocked"}: break
+            if call.get("status")=="blocked": break
+            if call.get("status")=="error" and call.get("error")!="llm_output_limit": break
         trials.append({"repeat":repeat,"order":order,"positions":positions,"calls":calls,
                        "decisions":decisions,"scores":scores})
         if llm.stop: break
     statuses=[_status(jdirect),_status(jsignals)]+[_status(call) for t in trials for call in t["calls"].values()]
     expected=REPEATS*len(HARD_ARMS)+2
+    output_caps=[call for t in trials for call in t["calls"].values() if call.get("error")=="llm_output_limit"]
+    fatal_errors=[call for t in trials for call in t["calls"].values() if call.get("status")=="error" and call.get("error")!="llm_output_limit"]
     if len(statuses)==expected and all(s=="ok" for s in statuses): status="ok"
+    elif len(statuses)==expected and not fatal_errors and all(s in {"ok","error"} for s in statuses): status="censored" if output_caps else "ok"
     elif statuses and all(s=="dry_run" for s in statuses): status="dry_run"
-    elif any(s=="error" for s in statuses): status="error"
+    elif fatal_errors: status="error"
     else: status="partial"
     return {"item_id":item["item_id"],"case_id":case["case_id"],"group_id":case["group_id"],
             "family":case["family"],"split":case["split"],"language":case["language"],"task_type":case["task_type"],
             "gold":case["gold"],"label_status":case["label_status"],"state_hash":case["state_hash"],
             "jev":{"direct_call":jdirect,"signals_call":jsignals,"direct_advice":direct,"signal_advice":signals},
-            "wrong_advice":wrong,"trials":trials,"status":status,"placeholder_used_for_dry_shape_only":placeholder}
+            "wrong_advice":wrong,"trials":trials,"status":status,"output_limit_failures":len(output_caps),"placeholder_used_for_dry_shape_only":placeholder}
 
 def _records(rows,arm):
     out=[]
@@ -135,6 +139,7 @@ def _call_stats(calls):
 
 def summarize(plan,rows,jev,llm):
     arms={arm:{"usable":len(_records(rows,arm)),"accuracy":_acc(rows,arm),
+               "output_limit_failures":sum(1 for r in rows for t in r["trials"] if (t["calls"].get(arm) or {}).get("error")=="llm_output_limit"),
                "repeat_consistency":_repeat_flips(rows,arm)} for arm in HARD_ARMS}
     paired={arm:_paired(rows,arm) for arm in HARD_ARMS if arm!="raw"}
     by_language={lang:{arm:_acc([r for r in rows if r["language"]==lang],arm) for arm in HARD_ARMS}
@@ -191,9 +196,9 @@ def report(s):
     fmt=lambda x:"unknown" if x is None else f"{x:.3f}"
     lines=["# Hard Jev -> LLM decision assistance report","",
            f"execution={s['execution']} split={s['split']}.","",
-           "|arm|usable trials|accuracy|repeat flips|","|---|---:|---:|---:|"]
+           "|arm|usable trials|accuracy|output-cap failures|repeat flips|","|---|---:|---:|---:|---:|"]
     for arm,v in s["arms"].items():
-        lines.append(f"|{arm}|{v['usable']}|{fmt(v['accuracy'])}|{v['repeat_consistency']['flips']}/{v['repeat_consistency']['cases']}|")
+        lines.append(f"|{arm}|{v['usable']}|{fmt(v['accuracy'])}|{v['output_limit_failures']}|{v['repeat_consistency']['flips']}/{v['repeat_consistency']['cases']}|")
     lines+=["","## Paired vs raw","",
             "|arm|pairs|helped|harmed|both correct|both wrong|","|---|---:|---:|---:|---:|---:|"]
     for arm,v in s["paired_vs_raw"].items():
@@ -232,7 +237,7 @@ def execute(plan,out,jev_cfg,llm_cfg,live_jev=False,live_llm=False,question_lang
     s=summarize(plan,rows,jev,llm)
     (out/"summary.json").write_text(json.dumps(s,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     (out/"report.md").write_text(report(s),encoding="utf-8")
-    failures=[r for r in rows if r["status"] in {"error","partial"} or any(
+    failures=[r for r in rows if r["status"] in {"error","partial","censored"} or any(
         t["scores"].get("raw")==1 and any(t["scores"].get(a)==0 for a in ("jev_direct","jev_signals","wrong_direct"))
         for t in r["trials"])]
     (out/"failures.jsonl").write_text("".join(dumps(r)+"\n" for r in failures),encoding="utf-8")
