@@ -277,13 +277,14 @@ def markdown(summary):
          f"真实模型请求：{summary['model_requests']}；已知模型费用小计：${summary['known_cost_subtotal_usd']:.6f}；未计量请求：{summary['unmetered_requests']}。", "",
          "|组|可评分记录/检查点|必要证据平均召回|遗漏证据记录数|", "|---|---:|---:|---:|"]
     if summary["suite"]=="retrieval_hard":
-        out=["# Hard semantic retrieval report","",f"execution=`{summary['execution']}` split=`{summary['split']}`.","",
-             "**64-block archive -> deterministic top16 candidates -> Jev semantic rerank. No downstream LLM task is measured.**","",
-             f"real model requests: {summary['model_requests']}; known model-cost subtotal: ${summary['known_cost_subtotal_usd']:.6f}.","",
-             "|language|records|candidate16|hybrid top4|Jev top1|Jev top4|","|---|---:|---:|---:|---:|---:|"]
+        out=["# Hard semantic retrieval report","",f"execution=\`{summary['execution']}\` split=\`{summary['split']}\`.","",
+             "**v0.4: 64-block archive; compare deterministic Top-16 -> Jev rerank against Jev semantic scoring over all 64 blocks.**","",
+             f"real model requests: {summary['model_requests']}; known model-cost subtotal: $\${summary['known_cost_subtotal_usd']:.6f}.","",
+             "|language|records|candidate16|hybrid top4|Jev cand top4|Jev cand top4 given present|Jev full64 top1|Jev full64 top4|",
+             "|---|---:|---:|---:|---:|---:|---:|---:|"]
         fmt=lambda x:"unknown" if x is None else f"{x:.3f}"
         for k,v in summary["by_language_method_or_policy"].items():
-            out.append(f"|{k}|{v['usable_records']}|{fmt(v['candidate16_recall'])}|{fmt(v['hybrid_top4_recall'])}|{fmt(v['jev_top1_recall'])}|{fmt(v['jev_top4_recall'])}|")
+            out.append(f"|{k}|{v['usable_records']}|{fmt(v['candidate16_recall'])}|{fmt(v['hybrid_top4_recall'])}|{fmt(v['jev_candidate_top4_recall'])}|{fmt(v['jev_candidate_top4_given_candidate'])}|{fmt(v['jev_full64_top1_recall'])}|{fmt(v['jev_full64_top4_recall'])}|")
     elif summary["suite"]=="retrieval":
         out=["# Context Curator 检索实验报告","",f"执行：`{summary['execution']}`；split=`{summary['split']}`。","",
              "**此实验把后续目标视为归档，隔离测试检索，不测压缩策略。**","",
