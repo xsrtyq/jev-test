@@ -197,6 +197,28 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(s["arms"]["raw"]["repeat_consistency"]["cases"],1)
             self.assertEqual(s["wrong_advice"]["trials"],2)
             self.assertTrue((Path(td)/"live/report.md").is_file())
+    def test_hard_nonfatal_output_cap_continues_other_arms_and_counts_cost(self):
+        one=hard_runner.make_plan("dev");one["items"]=one["items"][:1];one["case_records"]=1
+        one["original_groups"]=1;one["jev_requests_max"]=2;one["llm_requests_max"]=10
+        calls={"n":0}
+        def sometimes_length(endpoint,body,key,timeout):
+            calls["n"]+=1
+            payload=json.loads(body["messages"][-1]["content"])
+            blocks=payload["state"]["blocks"]
+            wrong=any("synthetic_known_wrong_direct_advisory" in b["text"] for b in blocks)
+            if wrong and calls["n"]<10:
+                return {"model":"deepseek-v4-flash","choices":[{"finish_reason":"length","message":{"content":"","refusal":None}}],
+                        "usage":{"prompt_tokens":250,"completion_tokens":2048}}
+            return fake_llm(endpoint,body,key,timeout)
+        cfg={**A2_CFG,"nonfatal_output_limit":True}
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ,{"TYPESAFE_API_KEY":"TEST_JEV","A2AGENT_API_KEY":"TEST_A2"}):
+            s=hard_runner.execute(one,Path(td)/"live",DEFAULT,cfg,True,True,jev_send=fake_jev,llm_send=sometimes_length)
+            self.assertEqual(s["completed_records"],1)
+            self.assertEqual(s["llm_backend"]["requests"],10)
+            self.assertEqual(s["arms"]["wrong_direct"]["output_limit_failures"],2)
+            self.assertEqual(s["llm_arm_usage"]["wrong_direct"]["requests"],2)
+            self.assertGreaterEqual(s["llm_arm_usage"]["wrong_direct"]["output_tokens"],4096)
+            self.assertEqual(s["statuses"].get("censored"),1)
     def test_neutral_arm_exists_in_report(self):
         p=make_plan("quick","dev")
         with tempfile.TemporaryDirectory() as td:
