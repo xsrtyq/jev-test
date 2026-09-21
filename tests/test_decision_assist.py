@@ -154,6 +154,19 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(row["status"],"error")
             self.assertEqual(row["error"],"llm_output_limit")
             self.assertEqual(row["finish_reason"],"length")
+    def test_a2agent_output_limit_can_be_censored_without_stopping_backend(self):
+        case=dataset("dev",seeds=(1,))[0]
+        q=direct_question(case)
+        def length_response(endpoint,body,key,timeout):
+            return {"model":"deepseek-v4-flash","choices":[{"finish_reason":"length","message":{"content":"","refusal":None}}],
+                    "usage":{"prompt_tokens":100,"completion_tokens":2048}}
+        cfg={**A2_CFG,"nonfatal_output_limit":True}
+        with patch.dict(os.environ,{"A2AGENT_API_KEY":"TEST_A2"}):
+            client=Client(cfg,live=True,send=length_response)
+            row=client.request(case["state"],q)
+            self.assertEqual(row["error"],"llm_output_limit")
+            self.assertTrue(row["nonfatal"])
+            self.assertIsNone(client.stop)
     def test_fake_a2agent_json_object_request_shape(self):
         p=make_plan("quick","dev");p["items"]=p["items"][:1];p["case_records"]=1;p["original_groups"]=1
         p["jev_requests_max"]=2;p["llm_requests_max"]=4
