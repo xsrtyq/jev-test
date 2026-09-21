@@ -12,6 +12,7 @@ from curator.fixtures import *
 from curator.client import Client, DEFAULT, validate_config, scan
 from curator.runner import *
 from curator import retrieval as retrieval_lab
+from curator import retrieval_hard as retrieval_hard_lab
 from curator.__main__ import main
 
 
@@ -188,6 +189,14 @@ class ContractTests(unittest.TestCase):
 class RunnerTests(unittest.TestCase):
     def test_quick_request_count(self):self.assertEqual(make_plan()['max_model_requests'],18)
     def test_retrieval_request_count(self):self.assertEqual(make_plan("retrieval")['max_model_requests'],12)
+    def test_hard_retrieval_request_count(self):self.assertEqual(make_plan("retrieval_hard")['max_model_requests'],12)
+    def test_hard_retrieval_archive_and_gold_separation(self):
+        ep=retrieval_hard_lab.dataset("dev")[0]
+        self.assertEqual(len(ep["state"]["blocks"]),64);self.assertNotIn("gold",ep["state"])
+        self.assertIn(ep["gold"]["target_id"],{b["id"] for b in ep["state"]["blocks"]})
+    def test_hard_retrieval_candidate_state_bounded(self):
+        ep=retrieval_hard_lab.dataset("dev")[0];rank=retrieval_hard_lab.hybrid_ranking(ep["state"])
+        self.assertEqual(len(rank),64);self.assertEqual(len(set(rank[:16])),16)
     def test_retrieval_questions_cover_blocks(self):
         ep=dataset("dev",seeds=(1,))[0];s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
         q,m=retrieval_lab.questions(s,"zh");self.assertEqual(len(q),len(s["blocks"]));self.assertEqual(len(m),len(q))
@@ -231,6 +240,10 @@ class RunnerTests(unittest.TestCase):
             s=execute(p,Path(td)/'out',live=True,send=fake_provider)
             self.assertEqual(s['model_requests'],1)
             self.assertTrue((Path(td)/'out/failures.jsonl').is_file())
+    def test_hard_retrieval_dry_run_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=make_plan('retrieval_hard');s=execute(p,Path(td)/'out',live=False)
+            self.assertEqual(s['model_requests'],0);self.assertTrue((Path(td)/'out/report.md').is_file())
     def test_no_overwrite(self):
         with tempfile.TemporaryDirectory() as td:self.assertRaises(ExperimentError,execute,make_plan(),td)
     def test_scan_rejects_key_pattern(self):
