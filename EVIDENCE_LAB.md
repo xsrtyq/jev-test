@@ -1,49 +1,44 @@
-# 新入口：Jev evidence-first v0.5
+# 新入口：Jev evidence-first v0.6
 
-这是独立实验，不安装到Codex，不修改主coding系统。完整计划：`docs/EVIDENCE_NEXT_PLAN.md`。旧结果核对：`evidence/audit-before-v05.json`。
+v0.5 的 smoke 与 retrieval128 原始结果已经冻结在 `docs/results/`。v0.6 不修改旧结果；它只修复 retrieval128/dev 暴露出的一个结构性问题：**状态记录所在分片看不到“当前revision/scope绑定”，因此会把同对象的旧revision误判为更相关。**
 
-## 先只跑一次 smoke
+## v0.6 检索结构
 
-GitHub → `xsrtyq/jev-test` → Actions → **Jev evidence-first v0.5** → Run workflow。
+128条档案现在按最多64条/24,000字节分片。每个案例执行：
+
+1. 所有分片先找“当前对象/revision/scope/identity绑定”；
+2. 每片固定贡献少量anchor候选，统一重排后保留2个anchor并恢复pair/dependency；
+3. 将同一anchor原文上下文带入每个分片，再评分状态、反证等补充证据；
+4. 候选统一重排，最后按7,800字节预算恢复逐字原文与依赖闭包；
+5. rules/BM25基线不变。
+
+问题模板已缩短，避免在每个block重复长说明。128条时每案例预计6次Jev检索；e2e另加1次proposal。256条时预计10次Jev检索。gold仍只在评测端，anchor/evidence选择不读取gold。
+
+## 为什么没有直接跑 e2e128
+
+v0.5 retrieval128/dev 的最终证据包是17/18完整。唯一失败 `release-positive-en-128-s601` 中，当前绑定在一个分片，真正当前状态在另一个分片；状态分片看不到绑定，因此旧revision状态占据Top-4，当前状态只排第7。zh/mixed同模式也只排第6/第8，只是pair closure偶然救回。
+
+因此先修检索再花144次Flash更合理。dev允许调协议；calibration/test仍保持未见。
+
+## 下一次只跑精确失败case
+
+GitHub → Actions → **Jev evidence-first v0.6**：
 
 |字段|值|
 |---|---|
-|Branch|main|
-|stage|smoke|
-|split|dev|
+|stage|`retrieval128`|
+|split|`dev`|
 |confirm_jev_paid|勾选|
-|confirm_llm_paid|勾选|
-|case_id|留空|
+|confirm_llm_paid|不勾|
+|case_id|`release-positive-en-128-s601`|
 |resume_run|留空|
 
-沿用已有的 `TYPESAFE_API_KEY` 和 `A2AGENT_API_KEY`，不需要再贴key或购买新的API。
+这轮最多6次Jev、0次Flash。若anchor binding与最终必要证据都恢复，再跑完整 `retrieval128/dev`（108次Jev）；完整dev通过后才进入 `e2e128/dev`。
 
-这一轮最多 **18次Jev + 12次A2Agent Flash**，覆盖三条案例。绿色只表示计划完整记录，不表示模型质量过关。两项付费都不勾则为离线dry-run；smoke/e2e仅勾一项会拒绝执行，避免只花一半钱却没有配对结果。
+旧v0.5 artifact不能作为v0.6 resume来源：版本、请求和协议hash不同，这是故意的。
 
-后续不是一键全跑：先看smoke，随后 `retrieval128`（只勾Jev）和 `e2e128`（两项都勾）；再决定是否值得扩大256。
+## 产物
 
-## 看产物
+artifact前缀改为 `jev-evidence-v06-`。retrieval-only报告现在直接显示anchor命中、conditioned局部存活、最终必要证据完整率、rules完整率与语言拆分，不再输出空的arm表。
 
-artifact名：`jev-evidence-v05-<run_id>-<attempt>`，保留30天。
-
-`report.md` 是入口；`summary.json` 有每臂完整分母、helped/harmed、证据召回、用量与整条路径成本/延迟。`plan.json` 是冻结计划，gold只留在评测端；`requests/` 保存实际送出的合成请求体，不含headers或key；`calls.jsonl` 逐请求记录intent/result；`retrieval.jsonl` 保存分片、候选和原文包；`trials.jsonl` 保存每次下游结果。
-
-输出上限会计为失败但不自动重试；费用仍计入。未知计量、认证/传输等问题会停。看到红卡先保留artifact，不要连续重跑。
-
-## 中断后恢复
-
-相同stage、split、case_id、代码/协议未变时，在 `resume_run` 填上一个运行的数字ID。程序下载原artifact，校验计划/请求哈希，只复用已有完整结果。未确定是否已经计费的发送不会自动重试，需要先审阅。
-
-要跨时间测模型变化，应留空 `resume_run`，使用同一计划做一轮新观测；否则复用旧响应不算重测。
-
-## 本机可选命令
-
-```bash
-python -m unittest discover -s tests -v
-python -m evidence_lab plan --stage smoke --split dev --out phase-plan.json
-python -m evidence_lab run --plan phase-plan.json --out runs/phase-dry
-# 环境变量由你在本机安全设置；下句才会真实付费。
-python -m evidence_lab run --plan phase-plan.json --out runs/phase-live --allow-jev-paid --allow-llm-paid
-```
-
-只有Python标准库，不需要GPU或安装本地模型。
+Secret仍只使用已有的 `TYPESAFE_API_KEY` 和 `A2AGENT_API_KEY`；retrieval阶段不会读取或调用下游LLM key。没有自动付费运行，也没有接入主coding系统。
