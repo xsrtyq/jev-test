@@ -77,26 +77,27 @@ Jev signals：
 
 ## 下游 LLM
 
-第一阶段固定 gpt-5.6-luna，原因不是认为它最好，而是它是当前官方面向成本敏感高吞吐工作的 GPT-5.6 档位，适合先验证“Jev 是否能给较小 LLM 带来增量”。
+第一阶段默认改为 **A2Agent → DeepSeek V4 Flash**。A2Agent 官方文档确认其 OpenAI-compatible Chat Completions 请求地址为 `https://api.a2agent.me/v1/chat/completions`；官方示例使用 `deepseek-v4-pro`，模型目录对应 Flash 的命名为 `deepseek-v4-flash`。
 
-当前冻结配置：
+冻结配置：
 
-- model: gpt-5.6-luna
-- Chat Completions + strict JSON Schema
-- reasoning effort: none
-- input: $0.20 / 1M tokens
-- cached input: $0.02 / 1M
-- output: $1.20 / 1M
-- 单次实验 LLM 预算保护：$0.75
+- backend: `openai_compatible`
+- provider label: `A2Agent relay -> DeepSeek V4 Flash`
+- model: `deepseek-v4-flash`
+- endpoint: `https://api.a2agent.me/v1/chat/completions`
+- secret: `A2AGENT_API_KEY`
+- structured mode: `json_object` + 本地严格枚举/schema 校验
+- public list input price: $0.14 / 1M
+- public list output price: $0.28 / 1M
+- 单次实验下游 LLM 预算保护：$0.75
 - Jev 预算保护仍为 $0.25
+- `upstream_model_verified=false`：中转站返回的模型标识会记录，但当前不把 relay alias 当成对真实上游 revision 的独立证明
 
-来源：
-- https://developers.openai.com/api/docs/models/gpt-5.6-luna
-- https://developers.openai.com/api/docs/guides/structured-outputs
+用户当前控制台可能有账户组折扣；预算估算故意采用公开标准价以偏保守，最终账单以 A2Agent Usage/账户分组计费为准。
 
-OpenAI 官方当前支持 Chat Completions 与 Responses 的 Structured Outputs；本实验沿用仓库已有的 Chat Completions stdlib 适配器，只输出一个严格枚举标签，不要求长解释。
+A2Agent 公开文档说明它提供 OpenAI-compatible Chat Completions，但没有在本轮核实 strict `json_schema` 的完整兼容性。因此 relay 配置默认使用更通用的 `response_format={"type":"json_object"}`，随后由我们的客户端本地强制检查：必须是完整 JSON object、key 集完全匹配、每个 value 必须属于定义枚举。任何协议偏差直接记失败，不进行宽松解析或自动重试。
 
-如果 Luna 上出现明确增益，后续再用独立冻结配置验证 Terra / Sol；不要先不断换模型直到结果变漂亮。
+OpenAI GPT-5.6 Luna 配置仍保留为后续独立对照，不再是第一轮默认后端。不要在看到 DeepSeek 结果后不断切模型调到“赢”；先按 dev → calibration → untouched test 冻结实验。
 
 ## 规模
 
@@ -126,22 +127,25 @@ dev 的 4 个 family × 2 seed × 3 language：
 
 GitHub → Actions → Jev decision assist benchmark。
 
-完整 paired run 需要 Repository Secrets：
+完整 paired run 默认需要 Repository Secrets：
 
-- 已有：TYPESAFE_API_KEY
-- 新增：OPENAI_API_KEY
+- 已有：`TYPESAFE_API_KEY`
+- 新增：`A2AGENT_API_KEY`
+
+只有以后选择 `openai_gpt_5_6_luna` 时才需要 `OPENAI_API_KEY`。
 
 第一次：
 
 - confirm_jev_paid = true
 - confirm_llm_paid = true
+- downstream_model = a2agent_deepseek_v4_flash
 - suite = quick
 - split = dev
 - question_language = auto
 
-如果没有 OPENAI_API_KEY，先不要运行真实 paired benchmark。离线 CI 和 dry-run 已覆盖，不需要为了“试按钮”购买调用。
+如果还没有 `A2AGENT_API_KEY`，先不要运行真实 paired benchmark。离线 CI 和 dry-run 已覆盖，不需要为了“试按钮”购买调用。
 
-API 费用是 OpenAI API 账户的独立计费项目；本 workflow 只读取 GitHub Secret，不把 key 写进配置、日志或 artifact。上传前分别扫描两个 secret 的原值。
+A2Agent 的 API Key 只放 GitHub Secret，不写入配置、日志或 artifact；上传前会同时扫描 TypeSafe、A2Agent 和（若使用）OpenAI Secret 的原值。
 
 ## 成功条件
 
