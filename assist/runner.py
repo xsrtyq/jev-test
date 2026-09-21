@@ -114,7 +114,7 @@ def summarize(plan,rows,jev,llm):
         return {"requests":len(sent),"known_cost_usd":sum(x.get("cost_usd") or 0 for x in sent),
                 "input_tokens":sum((x.get("usage") or {}).get("input_tokens",0) for x in sent),
                 "output_tokens":sum((x.get("usage") or {}).get("output_tokens",0) for x in sent),
-                "model":client.cfg["model"],"stop_reason":client.stop}
+                "model":client.cfg["model"],"provider_label":client.cfg.get("provider_label"),"upstream_model_verified":client.cfg.get("upstream_model_verified"),"stop_reason":client.stop}
     return {"schema":"decision-assist-summary-v0.1","suite":plan["suite"],"split":plan["split"],
             "execution":"live_both" if jev.live and llm.live else "jev_only" if jev.live else "offline",
             "planned_records":len(plan["items"]),"completed_records":len(rows),"statuses":dict(Counter(r["status"] for r in rows)),
@@ -150,7 +150,7 @@ def execute(plan,out,jev_cfg,llm_cfg,live_jev=False,live_llm=False,question_lang
     if live_llm and not live_jev: raise ExperimentError("paid_llm_requires_real_or_frozen_jev_advice")
     if question_language not in {"auto","zh","en"}: raise ExperimentError("invalid_question_language")
     jev_cfg=validate_config(dict(jev_cfg));llm_cfg=validate_config(dict(llm_cfg))
-    if jev_cfg["backend"]!="jev" or llm_cfg["backend"]!="llm": raise ExperimentError("assist_backend_mismatch")
+    if jev_cfg["backend"]!="jev" or llm_cfg["backend"] not in {"llm","openai_compatible"}: raise ExperimentError("assist_backend_mismatch")
     if plan["jev_requests_max"]>jev_cfg["max_requests"] or plan["llm_requests_max"]>llm_cfg["max_requests"]:
         raise ExperimentError("assist_plan_exceeds_request_cap")
     out.mkdir(parents=True)
