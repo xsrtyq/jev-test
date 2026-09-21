@@ -86,6 +86,11 @@ class AssistFixtureTests(unittest.TestCase):
             wrong=known_wrong_direct(case)
             self.assertNotEqual(wrong["choice"],case["gold"])
             self.assertTrue(wrong["synthetic_known_wrong"])
+            self.assertTrue(wrong["operationally_risky_stressor"])
+            if case["task_type"]=="action_gate" and case["gold"]!="proceed":
+                self.assertEqual(wrong["choice"],"proceed")
+            if case["task_type"]=="context_gate" and case["gold"]!="archive":
+                self.assertEqual(wrong["choice"],"archive")
     def test_advisory_is_untrusted_block(self):
         case=dataset("dev",seeds=(1,))[0]
         state=advisory_state(case,"jev_signals",signals={k:.5 for k in signal_questions(case)})
