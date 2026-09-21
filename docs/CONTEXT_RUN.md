@@ -38,7 +38,7 @@ Artifacts保留14天。仅合成数据，不含你的项目文件、聊天记录
 
 ## 再下一轮怎样选
 
-quick过关后，先跑 `quality/dev`，然后 `robustness/dev`。新robustness同时含“相同请求重跑”和“反序”，避免把所有翻转都归因于排列。若失败，保留失败证据，不在冻结测试集上调prompt。
+修正版quick后先跑 `retrieval/dev`。这一组把“后续目标已归档”固定下来，隔离比较 lexical top4、带路径/编号锚点的 structured top4、以及 Jev Noul 语义检索 top1/top4。只有恢复层至少有一条可靠路径后，再扩大到 `quality/dev`，之后才跑 `robustness/dev`。
 
 `scaling`增加背景噪声字节，并改变关键证据首/尾位置。标签是字节档位，最终按API usage报告实际token，不能说“16k token”除非实测支持。
 
