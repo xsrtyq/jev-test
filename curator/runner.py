@@ -200,11 +200,17 @@ def summarize(plan,rows):
         for language in ("zh","en","mixed"):
             items=[r for r in rows if r["language"]==language]
             good=[r for r in items if r.get("model_result") is not None]
+            candidate_good=[r for r in good if r["model_result"].get("candidate") is not None]
+            full_good=[r for r in good if r["model_result"].get("full") is not None]
+            candidate_present=[r for r in candidate_good if r["deterministic"]["candidate_recall"]]
             by[language]={"planned_records":len(items),"usable_records":len(good),
                           "candidate16_recall":statistics.mean(r["deterministic"]["candidate_recall"] for r in items) if items else None,
                           "hybrid_top4_recall":statistics.mean(r["deterministic"]["hybrid_top4_hit"] for r in items) if items else None,
-                          "jev_top1_recall":statistics.mean(r["model_result"]["top1_hit"] for r in good) if good else None,
-                          "jev_top4_recall":statistics.mean(r["model_result"]["top4_hit"] for r in good) if good else None}
+                          "jev_candidate_top1_recall":statistics.mean(r["model_result"]["candidate"]["top1_hit"] for r in candidate_good) if candidate_good else None,
+                          "jev_candidate_top4_recall":statistics.mean(r["model_result"]["candidate"]["top4_hit"] for r in candidate_good) if candidate_good else None,
+                          "jev_candidate_top4_given_candidate":statistics.mean(r["model_result"]["candidate"]["top4_hit"] for r in candidate_present) if candidate_present else None,
+                          "jev_full64_top1_recall":statistics.mean(r["model_result"]["full"]["top1_hit"] for r in full_good) if full_good else None,
+                          "jev_full64_top4_recall":statistics.mean(r["model_result"]["full"]["top4_hit"] for r in full_good) if full_good else None}
     elif plan["suite"]=="retrieval":
         for language in ("zh","en","mixed"):
             items=[r for r in rows if r["language"]==language]
@@ -323,7 +329,9 @@ def execute(plan,out,cfg=None,live=False,budget=3000,question_language="auto",se
     (out/"summary.json").write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     (out/"report.md").write_text(markdown(result),encoding="utf-8")
     if plan["suite"]=="retrieval_hard":
-        failures=[r for r in rows if r["status"] in {"error","blocked"} or not r["deterministic"]["candidate_recall"] or (r.get("model_result") and not r["model_result"]["top4_hit"])]
+        failures=[r for r in rows if r["status"] in {"error","blocked","partial"} or not r["deterministic"]["candidate_recall"] or
+                  (r.get("model_result") and r["model_result"].get("full") and not r["model_result"]["full"]["top4_hit"]) or
+                  (r.get("model_result") and r["deterministic"]["candidate_recall"] and r["model_result"].get("candidate") and not r["model_result"]["candidate"]["top4_hit"])]
     elif plan["suite"]=="retrieval":
         failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and not r["model_result"]["topk_hit"])]
     elif plan["suite"]=="replay":
