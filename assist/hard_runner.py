@@ -40,11 +40,22 @@ def make_plan(split="dev",seed=1729):
 def _status(call):
     return None if call is None else call.get("status")
 
+def _dry_placeholders(case):
+    labels=list(case["labels"]);p=1/len(labels)
+    direct={"choice":labels[0],"probabilities":{x:p for x in labels},"provider_confidence":None,
+            "dry_shape_only":True}
+    from .core import SIGNALS
+    signals={k:.5 for k in SIGNALS[case["task_type"]]}
+    return direct,signals
+
 def run_item(item,jev,llm,question_language="auto"):
     case=item["case"];dq=direct_question(case,question_language);sq=signal_questions(case,question_language)
     jdirect=jev.request(case["state"],dq)
     jsignals=jev.request(case["state"],sq)
     direct=direct_advice(jdirect);signals=signal_advice(jsignals)
+    placeholder=False
+    if not llm.live and (direct is None or signals is None):
+        direct,signals=_dry_placeholders(case);placeholder=True
     wrong=known_wrong_direct(case)
     trials=[]
     if llm.live and (direct is None or signals is None):
@@ -75,7 +86,7 @@ def run_item(item,jev,llm,question_language="auto"):
             "family":case["family"],"split":case["split"],"language":case["language"],"task_type":case["task_type"],
             "gold":case["gold"],"label_status":case["label_status"],"state_hash":case["state_hash"],
             "jev":{"direct_call":jdirect,"signals_call":jsignals,"direct_advice":direct,"signal_advice":signals},
-            "wrong_advice":wrong,"trials":trials,"status":status}
+            "wrong_advice":wrong,"trials":trials,"status":status,"placeholder_used_for_dry_shape_only":placeholder}
 
 def _records(rows,arm):
     out=[]
