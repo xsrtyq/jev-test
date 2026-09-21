@@ -1,0 +1,17 @@
+{
+  "backend": "llm",
+  "model": "gpt-5.6-luna",
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "key_env": "OPENAI_API_KEY",
+  "input_per_million": 0.20,
+  "cached_input_per_million": 0.02,
+  "output_per_million": 1.20,
+  "price_verified": "2026-09-21 official GPT-5.6 Luna model page",
+  "budget_usd": 0.75,
+  "reserve_per_call": 0.005,
+  "socket_timeout_s": 30,
+  "run_deadline_s": 600,
+  "max_requests": 120,
+  "max_completion_tokens": 256,
+  "reasoning_effort": "none"
+}
