@@ -1,4 +1,4 @@
-name: Evidence v0.5 offline verification
+name: Evidence v0.6 offline verification
 on:
   push:
     paths: ['evidence_lab/**', 'tests/test_evidence_lab.py', '.github/workflows/evidence-*.yml']
