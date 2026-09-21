@@ -22,6 +22,7 @@ jobs:
           python3 -m curator run --out offline-context --frozen-plan offline-plan.json
           python3 -m curator run --suite replay --steps 10 --out offline-replay
           python3 -m curator run --suite retrieval --out offline-retrieval
+          python3 -m curator run --suite retrieval_hard --out offline-retrieval-hard
           python3 -m curator cache --out offline-cache.json
           python3 -m curator scan offline-context
           python3 -c "import json; s=json.load(open('offline-context/summary.json')); assert s['model_requests']==0; assert s['execution']=='offline_no_model_results'"
