@@ -13,9 +13,9 @@ def lexical_scores(state):
 
 def anchor_features(text):
     low=text.lower()
-    paths=re.findall(r"(?:[A-Za-z]:[\\/][^\\s，。；;]+|(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.\\-\\u3400-\\u9fff]+)",text)
-    keyed=re.findall(r"\\b[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_./:-]+\\b",text)
-    refs=re.findall(r"\\b(?:[A-Z][A-Z0-9_-]{3,}|[A-Za-z]+-[A-Za-z0-9_-]*\\d+[A-Za-z0-9_-]*)\\b",text)
+    paths=re.findall(r"(?:[A-Za-z]:[\/][^\s，。；;]+|(?:[A-Za-z0-9_.-]+[\/])+[A-Za-z0-9_.\-\u3400-\u9fff]+)",text)
+    keyed=re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_./:-]+\b",text)
+    refs=re.findall(r"\b(?:[A-Z][A-Z0-9_-]{3,}|[A-Za-z]+-[A-Za-z0-9_-]*\d+[A-Za-z0-9_-]*)\b",text)
     return {"paths":paths,"keyed":keyed,"refs":refs,"has_anchor":bool(paths or keyed or refs),"historical_word":("historical" in low or "历史" in text)}
 
 def structured_scores(state):
