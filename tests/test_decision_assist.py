@@ -9,6 +9,9 @@ from unittest.mock import patch
 from assist.fixtures import dataset,LABELS
 from assist.core import advisory_state,direct_question,signal_questions
 from assist.runner import make_plan,execute
+from assist import hard_fixtures as hard_fixtures
+from assist import hard_runner
+from assist.core import known_wrong_direct,HARD_ARMS
 from curator.client import Client,DEFAULT,validate_config
 from curator.core import ExperimentError
 
@@ -67,6 +70,22 @@ class AssistFixtureTests(unittest.TestCase):
         self.assertEqual(p["case_records"],24)
         self.assertEqual(p["jev_requests_max"],48)
         self.assertEqual(p["llm_requests_max"],96)
+    def test_hard_dataset_split_and_plan_bounds(self):
+        self.assertEqual(len(hard_fixtures.dataset("dev")),12)
+        self.assertEqual(len(hard_fixtures.dataset("calibration")),12)
+        self.assertEqual(len(hard_fixtures.dataset("test")),12)
+        p=hard_runner.make_plan("dev")
+        self.assertEqual(p["case_records"],12)
+        self.assertEqual(p["jev_requests_max"],24)
+        self.assertEqual(p["llm_requests_max"],120)
+        self.assertEqual(p["arms"],list(HARD_ARMS))
+        self.assertTrue(all(len(x["arm_orders"])==2 for x in p["items"]))
+        self.assertTrue(all(sorted(o)==sorted(HARD_ARMS) for x in p["items"] for o in x["arm_orders"]))
+    def test_known_wrong_advice_is_always_wrong(self):
+        for case in hard_fixtures.dataset("all"):
+            wrong=known_wrong_direct(case)
+            self.assertNotEqual(wrong["choice"],case["gold"])
+            self.assertTrue(wrong["synthetic_known_wrong"])
     def test_advisory_is_untrusted_block(self):
         case=dataset("dev",seeds=(1,))[0]
         state=advisory_state(case,"jev_signals",signals={k:.5 for k in signal_questions(case)})
@@ -143,6 +162,23 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertTrue(all(x[0]=="https://api.a2agent.me/v1/chat/completions" for x in seen))
             self.assertTrue(all(x[1]["response_format"]=={"type":"json_object"} for x in seen))
             self.assertTrue(all(x[1].get("max_tokens")==1024 and "max_completion_tokens" not in x[1] for x in seen))
+    def test_hard_dry_run_and_one_item_fake_live(self):
+        p=hard_runner.make_plan("dev")
+        with tempfile.TemporaryDirectory() as td:
+            s=hard_runner.execute(p,Path(td)/"dry",DEFAULT,A2_CFG)
+            self.assertEqual(s["execution"],"offline")
+            self.assertEqual(s["planned_records"],12)
+            self.assertIn("wrong_direct",s["arms"])
+        one=hard_runner.make_plan("dev");one["items"]=one["items"][:1];one["case_records"]=1
+        one["original_groups"]=1;one["jev_requests_max"]=2;one["llm_requests_max"]=10
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ,{"TYPESAFE_API_KEY":"TEST_JEV","A2AGENT_API_KEY":"TEST_A2"}):
+            s=hard_runner.execute(one,Path(td)/"live",DEFAULT,A2_CFG,True,True,jev_send=fake_jev,llm_send=fake_llm)
+            self.assertEqual(s["completed_records"],1)
+            self.assertEqual(s["llm_backend"]["requests"],10)
+            self.assertEqual(s["jev_backend"]["requests"],2)
+            self.assertEqual(s["arms"]["raw"]["repeat_consistency"]["cases"],1)
+            self.assertEqual(s["wrong_advice"]["trials"],2)
+            self.assertTrue((Path(td)/"live/report.md").is_file())
     def test_neutral_arm_exists_in_report(self):
         p=make_plan("quick","dev")
         with tempfile.TemporaryDirectory() as td:
