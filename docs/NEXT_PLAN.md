@@ -117,3 +117,30 @@ Artifacts不包含密钥，只包含合成资料、请求体、响应结构、�
 本次交付：旧实验可重算审计；当前证据说明；上述六组的可运行代码；规则/检索/依赖/字节预算策略；三类Jev primitive适配；可选紧凑云端LLM适配；手动Actions、离线测试、报告与失败记录。旧v0.1工作流保持不变。
 
 本次不交付/不声称完成：新付费结果、人工金标准、模型训练、本地模型性能、生产Context Curator、主工作流接入、真实LLM任务闭环、服务端KV缓存优化。
+
+## 13. 两条独立主线：hard retrieval 与 Jev → LLM decision assist
+
+retrieval/dev + calibration 的旧题过度依赖显眼 path/ID；修正 structured regex 后 deterministic top4 在两组上都达到12/12，因此冻结旧 retrieval/test，不再把它当 Jev 增量证明。
+
+新 retrieval_hard 使用：
+- 64条 archive；
+- 近似主题和错误理由干扰；
+- “为什么拒绝/为什么选择”类 query；
+- deterministic hybrid top16 candidate generation；
+- Jev 只做候选内语义 rerank；
+- candidate recall 与 rerank recall 分开计分。
+
+这更接近最终生产形态：deterministic 层负责高召回，Jev 只在语义歧义处增加排序信息。
+
+与此同时恢复最初假设的独立测试：Jev 不直接接管判断，而给下游 LLM 提供语义建议。见 docs/DECISION_ASSIST.md。
+
+配对 arms：
+- raw LLM；
+- neutral 0.5 signal control；
+- Jev direct Choice advisory；
+- Jev multi-Noul signal advisory。
+
+核心统计不是单独 accuracy，而是 raw→assist 的 helped / harmed 配对翻转，以及成本、延迟、语言、task type。任何 action_gate 的 harm 都必须单独检查。
+
+这两条线均通过后，才能进入真正端到端 coding task：retrieval/curation 负责输入证据，decision assist 负责低成本语义特征，最终 LLM 仍受 deterministic permission/safety policy 约束。
+
