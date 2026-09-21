@@ -33,3 +33,12 @@ python -m curator cache --out runs/cache-assumptions.json
 必须先看：关键证据/精确原文召回、过期状态、候选遗漏、孤立叙述、预算阻断、检索后是否真的拿到所需信息。之后看序列化字节和费用。PINNED由程序保护，不把它算成Jev准确率；保留指针不等于取回成功；字节压缩不等于token节省；fixture证据覆盖不等于长coding任务成功率。
 
 v0.2只有API接线、静态/序列证据实验和程序策略，不是可安装到Codex/Claude的上下文插件。云端小LLM适配器是可选对照，需要独立模型与费用配置；真实下游LLM任务闭环、本地神经网络、服务端KV/prompt cache测量均未完成，不能声称已优化你的订阅用量。
+
+## 2026-09-21 更新
+
+真实 quick、retrieval/dev、retrieval/calibration 已经运行。原版“历史路径检索”被证明对修正后的 structured matcher 过于容易，因此没有继续跑原 retrieval/test。
+
+新增 suite：retrieval_hard。它使用 64-block archive、近似语义干扰和“为什么做出某决定”类 query，只把 deterministic top16 候选送给 Jev rerank，以测试 Jev 是否在规则/词项检索之外提供真正的语义增量。
+
+同时增加了完全独立的 Jev → LLM decision-assist benchmark；入口与说明见 docs/DECISION_ASSIST.md。两条实验线分别证明价值后，才考虑组合进主 coding workflow。
+
