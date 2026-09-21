@@ -279,3 +279,33 @@ The old hard report undercounted jev_direct resource use because censored calls 
 
 The harness now treats llm_output_limit as a censored observation for this benchmark: it records the failure and cost but continues independent arms/cases with no retry. Usage summaries include censored calls. Current offline verification passes 180 tests. Re-run hard/dev once on the current main to obtain a complete censored-aware dataset before moving to calibration.
 
+## 2026-09-21 hard/dev censored-aware run (run 35590045828)
+
+The run wrote 12 result rows but only 11 cases received model calls. The final case `hard-proxy_or_payload-1-zh` was blocked locally before any request because the Jev client still had a 600-second run deadline while 110 downstream DeepSeek calls had already consumed the wall clock. Therefore this run is **not yet the final complete dev dataset**.
+
+For the 11 executed cases (22 repeated downstream trials per ordinary arm):
+
+- raw: 22/22 labels correct, 0 output-cap failures;
+- neutral: 22/22 correct, 0 caps;
+- jev_direct: 22/22 correct, 0 caps;
+- jev_signals: 19/20 scorable labels correct, plus 2 output-cap failures; effective correct-and-completed outcomes = 19/22;
+- synthetic known-wrong direct: 21/22 correct.
+
+Paired against raw, jev_direct helped 0 and harmed 0. jev_signals helped 0, harmed 1, and produced two no-label output-cap failures. The known-wrong direct arm was never copied verbatim (0/22 trials returned the injected wrong label), but it still harmed one raw-correct trial: in revocation_scope/zh the injected high-confidence `proceed` prior shifted one repeat from the correct `blocked` result to `inspect_more`. This shows that 'not parroting the prior' is not the same as 'not being influenced by the prior'.
+
+Resource use also rejects the quick-suite hypothesis that Jev direct reliably reduces downstream reasoning:
+
+- raw downstream: 20,184 input / 7,910 output / 7,725 reasoning tokens; estimated $0.00504056;
+- jev_direct downstream: 23,462 / 9,504 / 9,319; estimated $0.0059458;
+- jev_signals downstream: 23,126 / 11,033 / 10,872; estimated $0.00632688;
+- wrong_direct downstream: 24,152 / 7,850 / 7,661; estimated $0.00557928.
+
+On a production-like per-decision accounting that adds the corresponding Jev call to each assisted downstream decision, mean estimated cost is about $0.0003334 for jev_direct versus $0.0002291 raw (+~45.5%). Median summed client latency is ~4.14 s for jev_direct vs ~4.32 s raw, while p95 is worse (~12.67 s vs ~10.63 s). There is no stable latency win. jev_signals is substantially worse in tail latency and completion reliability.
+
+Jev direct itself was correct on all 11 cases it actually received in this run. This is diagnostic only: raw DeepSeek was also at ceiling in this particular run, so there is no evidence of downstream accuracy improvement.
+
+A cross-run stability warning is now important. The identical proxy_or_payload/en raw input (same frozen plan) was classified `transient` in the previous partial run but `unknown` in both repeats here. Back-to-back repeats within one run therefore underestimate temporal/provider variance. Future calibration must include temporally separated control repeats and, where available, record provider fingerprint metadata.
+
+The harness now supports exact-case resume plans and gives the hard-suite Jev client a 900-second deadline. Resume only the missing case rather than repeating the 110 completed DeepSeek calls:
+`hard-proxy_or_payload-1-zh`.
+
