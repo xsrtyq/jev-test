@@ -8,10 +8,16 @@ on:
         type: boolean
         default: false
       confirm_llm_paid:
-        description: Authorize paid OpenAI LLM requests (full paired benchmark requires both boxes checked)
+        description: Authorize paid downstream LLM requests (full paired benchmark requires both boxes checked)
         required: true
         type: boolean
         default: false
+      downstream_model:
+        description: Downstream LLM backend
+        required: true
+        type: choice
+        options: [a2agent_deepseek_v4_flash, openai_gpt_5_6_luna]
+        default: a2agent_deepseek_v4_flash
       suite:
         description: Start with quick
         required: true
@@ -56,12 +62,19 @@ jobs:
       - name: Run bounded paired benchmark
         env:
           TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
-          OPENAI_API_KEY: ${{ inputs.confirm_llm_paid && secrets.OPENAI_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ inputs.confirm_llm_paid && inputs.downstream_model == 'openai_gpt_5_6_luna' && secrets.OPENAI_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && inputs.downstream_model == 'a2agent_deepseek_v4_flash' && secrets.A2AGENT_API_KEY || '' }}
           JEV_LIVE: ${{ inputs.confirm_jev_paid }}
           LLM_LIVE: ${{ inputs.confirm_llm_paid }}
+          DOWNSTREAM_MODEL: ${{ inputs.downstream_model }}
           QUESTION_LANGUAGE: ${{ inputs.question_language }}
         run: |
-          args=(--plan assist-plan.json --llm-config config/decision-llm-luna.json --out assist-run --question-language "$QUESTION_LANGUAGE")
+          if [ "$DOWNSTREAM_MODEL" = "a2agent_deepseek_v4_flash" ]; then
+            config="config/decision-llm-a2agent-deepseek-v4-flash.json"
+          else
+            config="config/decision-llm-luna.json"
+          fi
+          args=(--plan assist-plan.json --llm-config "$config" --out assist-run --question-language "$QUESTION_LANGUAGE")
           if [ "$JEV_LIVE" = "true" ]; then args+=(--allow-jev-paid); fi
           if [ "$LLM_LIVE" = "true" ]; then args+=(--allow-llm-paid); fi
           python3 -m assist run "${args[@]}"
@@ -70,7 +83,8 @@ jobs:
         if: always()
         env:
           TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
-          OPENAI_API_KEY: ${{ inputs.confirm_llm_paid && secrets.OPENAI_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ inputs.confirm_llm_paid && inputs.downstream_model == 'openai_gpt_5_6_luna' && secrets.OPENAI_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && inputs.downstream_model == 'a2agent_deepseek_v4_flash' && secrets.A2AGENT_API_KEY || '' }}
         run: |
           if [ ! -d assist-run ]; then echo 'safe=false' >> "$GITHUB_OUTPUT"; exit 0; fi
           python3 - <<'PY'
@@ -78,6 +92,7 @@ jobs:
           from curator.client import scan
           scan("assist-run", os.environ.get("TYPESAFE_API_KEY",""))
           scan("assist-run", os.environ.get("OPENAI_API_KEY",""))
+          scan("assist-run", os.environ.get("A2AGENT_API_KEY",""))
           print("Artifact scan passed")
           PY
           echo 'safe=true' >> "$GITHUB_OUTPUT"
@@ -90,7 +105,7 @@ jobs:
         if: always() && steps.scan.outputs.safe == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: jev-decision-assist-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: jev-decision-assist-${{ inputs.downstream_model }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: assist-run/
           retention-days: 14
           if-no-files-found: error
