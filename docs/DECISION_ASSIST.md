@@ -309,3 +309,40 @@ A cross-run stability warning is now important. The identical proxy_or_payload/e
 The harness now supports exact-case resume plans and gives the hard-suite Jev client a 900-second deadline. Resume only the missing case rather than repeating the 110 completed DeepSeek calls:
 `hard-proxy_or_payload-1-zh`.
 
+## 2026-09-21 hard/dev final merged result (runs 35590045828 + 35592371255)
+
+The exact missing case `hard-proxy_or_payload-1-zh` was resumed separately with 2 Jev + 10 DeepSeek calls, preserving its original frozen arm order. Merging that case with the preceding 11 executed cases yields the complete 12-case hard/dev dataset: 24 downstream repeated trials per arm, 24 Jev requests total, and 120 DeepSeek requests total.
+
+Final per-arm outcomes:
+
+- raw: 24/24 correct, 0 output-cap failures;
+- neutral: 23/23 scorable correct, 1 output-cap failure (effective correct-and-completed = 23/24);
+- jev_direct: 24/24 correct, 0 caps;
+- jev_signals: 21/22 scorable correct, 2 output-cap failures (effective correct-and-completed = 21/24);
+- synthetic known-wrong direct: 23/24 correct, 0 caps.
+
+Paired against raw:
+- jev_direct: helped 0, harmed 0;
+- jev_signals: helped 0, harmed 1, plus two no-label caps;
+- known-wrong direct: helped 0, harmed 1;
+- neutral: helped 0, harmed 0, plus one no-label cap.
+
+The known-wrong label was copied verbatim 0/24 times, but it still altered one raw-correct action-gate trial from `blocked` to `inspect_more`. External advice can therefore influence the decision boundary even when the model does not parrot the injected answer.
+
+Final downstream resource totals:
+- raw: 21,924 input / 9,293 output / 9,096 reasoning; $0.00567140;
+- neutral: 25,712 / 10,506 / 10,311; $0.00654136;
+- jev_direct: 25,492 / 10,444 / 10,247; $0.00649320;
+- jev_signals: 25,192 / 11,738 / 11,563; $0.00681352;
+- wrong_direct: 26,294 / 8,291 / 8,088; $0.00600264.
+
+Jev direct itself was 12/12 on the authored labels. The 12 direct Jev calls cost an estimated $0.000759444 total (~$0.00006329 per case) with p50 client latency ~282 ms. Raw DeepSeek averaged ~$0.00023631 per decision with p50 ~4.79 s. This makes Jev direct attractive as a cheap classifier/router candidate, but it does **not** imply it should replace the downstream model: the dataset contains only four independent semantic dev families translated into three language forms.
+
+For a production-like Jev-direct-plus-LLM path in which each decision receives its own Jev call, estimated mean cost is ~$0.00033384 per decision versus ~$0.00023631 raw (+~41.3%). DeepSeek reasoning is also higher under jev_direct in aggregate (10,247 vs 9,096, +~12.7%). Median summed client latency is lower (~4.32 s vs ~4.79 s) but p95 is worse (~12.33 s vs ~11.01 s), so there is no stable latency win.
+
+The multi-signal prior is currently the weakest assisted design: effective success 21/24, one paired harm, two output-cap failures, ~27.1% more downstream reasoning than raw, and ~49.2% higher production-like mean cost after adding the Jev signal call.
+
+A temporal-variance warning remains: the identical proxy_or_payload/en raw input was wrong (`transient`) in an earlier partial run but correct (`unknown`) in both repeats of the later censored-aware run. Back-to-back same-run repeats therefore do not measure provider/model stability over time.
+
+Conclusion for this experiment branch: freeze hard/dev. The evidence does not support unconditional final-label or multi-signal Jev priors as a way to make an already-strong DeepSeek Flash judge more accurate or cheaper. The next prior-style experiments, if pursued, should test Jev evidence selection / evidence-backed proposals and temporally separated controls rather than more runs of the current direct/signals prompt.
+
