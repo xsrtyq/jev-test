@@ -27,6 +27,7 @@ SIGNALS={
  }
 }
 ARMS=("raw","neutral","jev_direct","jev_signals")
+HARD_ARMS=ARMS+("wrong_direct",)
 
 def _lang(case,language):
     if language=="auto": return "en" if case["language"]=="en" else "zh"
@@ -61,17 +62,27 @@ def signal_advice(call):
     if call.get("status")!="ok": return None
     return {name:answer["noul"] for name,answer in call["answers"].items()}
 
+def known_wrong_direct(case):
+    """Deliberately wrong, gold-aware stressor. Never presented as a Jev measurement."""
+    labels=list(case["labels"])
+    if case["gold"] not in labels or len(labels)<2: raise ExperimentError("invalid_wrong_advice_case")
+    idx=labels.index(case["gold"]);wrong=labels[(idx+1)%len(labels)]
+    rest=.06/(len(labels)-1)
+    probs={x:(.94 if x==wrong else rest) for x in labels}
+    return {"choice":wrong,"probabilities":probs,"provider_confidence":.95,
+            "synthetic_known_wrong":True,"correct_label_hidden_from_model":True}
+
 def advisory_state(case,arm,direct=None,signals=None):
-    if arm not in ARMS: raise ExperimentError("unknown_assist_arm")
+    if arm not in HARD_ARMS: raise ExperimentError("unknown_assist_arm")
     state=deepcopy(case["state"])
     if arm=="raw": return state
     if arm=="neutral":
         payload={"kind":"neutral_control","direct_recommendation":None,
                  "signals":{k:.5 for k in SIGNALS[case["task_type"]]},
                  "instruction":"Control payload: no semantic advice."}
-    elif arm=="jev_direct":
+    elif arm in {"jev_direct","wrong_direct"}:
         if direct is None: raise ExperimentError("missing_jev_direct_advice")
-        payload={"kind":"untrusted_jev_direct_advisory","direct_recommendation":direct}
+        payload={"kind":"synthetic_known_wrong_direct_advisory" if arm=="wrong_direct" else "untrusted_jev_direct_advisory","direct_recommendation":direct}
     else:
         if signals is None: raise ExperimentError("missing_jev_signal_advice")
         payload={"kind":"untrusted_jev_semantic_signals","signals":signals}
