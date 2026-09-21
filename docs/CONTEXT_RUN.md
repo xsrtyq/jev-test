@@ -60,3 +60,16 @@ python -m curator run --frozen-plan plan-llm.json --config config/context-llm.lo
 ## 明确的限制
 
 没有自动派发、后台持续付费、自动集成或部署。Socket timeout不是每个请求的严格总墙钟上限；程序在请求前检查总deadline，Actions另有job硬上限。API客户端只有一层、零自动重试。缺少密钥或异常后，可查看部分记录，不要盲目连点重跑。
+
+## 当前下一步（2026-09-21）
+
+retrieval/dev 已完成，不要因该 run 的红色 UI 再付费重跑；红色来自结果写完后的 failures artifact bug，模型数据完整。修复后离线 CI 已通过。
+
+下一次请选择：
+- suite = retrieval
+- split = calibration
+- steps = 20（retrieval 不使用）
+- question_language = auto
+- paid = 勾选
+
+这是不同的4个主题族，用来检查 dev 的 Jev top-1 12/12 是否能泛化。不要先跑 test；如果 calibration 暴露问题，只允许在 dev/calibration 范围分析和改进，然后重建新的未见 test 版本。若 calibration 仍强，再冻结一次并运行 retrieval/test。
