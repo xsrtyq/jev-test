@@ -1,0 +1,96 @@
+name: Jev decision assist benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_jev_paid:
+        description: Authorize paid Jev requests
+        required: true
+        type: boolean
+        default: false
+      confirm_llm_paid:
+        description: Authorize paid OpenAI LLM requests (full paired benchmark requires both boxes checked)
+        required: true
+        type: boolean
+        default: false
+      suite:
+        description: Start with quick
+        required: true
+        type: choice
+        options: [quick, quality]
+        default: quick
+      split:
+        description: Use dev first; do not tune on test
+        required: true
+        type: choice
+        options: [dev, calibration, test]
+        default: dev
+      question_language:
+        description: State is not translated; only fixed question wording changes
+        required: true
+        type: choice
+        options: [auto, zh, en]
+        default: auto
+permissions:
+  contents: read
+concurrency:
+  group: jev-decision-assist-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  experiment:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify all offline tests before paid calls
+        run: |
+          python3 -c "import sys; assert sys.version_info >= (3, 11)"
+          python3 -m unittest discover -s tests -v
+      - name: Freeze paired plan
+        env:
+          SUITE: ${{ inputs.suite }}
+          SPLIT: ${{ inputs.split }}
+        run: python3 -m assist plan --suite "$SUITE" --split "$SPLIT" --out assist-plan.json
+      - name: Run bounded paired benchmark
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ inputs.confirm_llm_paid && secrets.OPENAI_API_KEY || '' }}
+          JEV_LIVE: ${{ inputs.confirm_jev_paid }}
+          LLM_LIVE: ${{ inputs.confirm_llm_paid }}
+          QUESTION_LANGUAGE: ${{ inputs.question_language }}
+        run: |
+          args=(--plan assist-plan.json --llm-config config/decision-llm-luna.json --out assist-run --question-language "$QUESTION_LANGUAGE")
+          if [ "$JEV_LIVE" = "true" ]; then args+=(--allow-jev-paid); fi
+          if [ "$LLM_LIVE" = "true" ]; then args+=(--allow-llm-paid); fi
+          python3 -m assist run "${args[@]}"
+      - name: Check artifact for both secrets
+        id: scan
+        if: always()
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ inputs.confirm_llm_paid && secrets.OPENAI_API_KEY || '' }}
+        run: |
+          if [ ! -d assist-run ]; then echo 'safe=false' >> "$GITHUB_OUTPUT"; exit 0; fi
+          python3 - <<'PY'
+          import os
+          from curator.client import scan
+          scan("assist-run", os.environ.get("TYPESAFE_API_KEY",""))
+          scan("assist-run", os.environ.get("OPENAI_API_KEY",""))
+          print("Artifact scan passed")
+          PY
+          echo 'safe=true' >> "$GITHUB_OUTPUT"
+      - name: Publish summary
+        if: always() && steps.scan.outputs.safe == 'true'
+        run: |
+          if [ -f assist-run/report.md ]; then cat assist-run/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+          echo 'Jev advice is untrusted and has no execution authority.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save paired results
+        if: always() && steps.scan.outputs.safe == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jev-decision-assist-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: assist-run/
+          retention-days: 14
+          if-no-files-found: error
