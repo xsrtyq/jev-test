@@ -52,16 +52,17 @@ def make_plan(suite="quick",split="dev",seed=1729,steps=20,backend="jev"):
             s=deepcopy(ep["state"]);s["query"]=ep["later_query"]
             q,_=retrieval_lab.questions(s,"en" if ep["language"]=="en" else "zh")
         elif suite=="retrieval_hard":
-            candidate_ids=retrieval_hard_lab.hybrid_ranking(ep["state"])[:16]
-            s=deepcopy(ep["state"]);s["blocks"]=[b for b in s["blocks"] if b["id"] in set(candidate_ids)]
-            q,_=retrieval_lab.questions(s,"en" if ep["language"]=="en" else "zh")
+            # v0.4 compares candidate-limited rerank with full-archive semantic scoring.
+            calls+=2
+            it["item_id"]=f"item-{i:04d}"
+            continue
         else:
             q,_=questions(ep["state"],it["method"],"en" if ep["language"]=="en" else "zh")
         batches=(len(q)+it["batch_questions"]-1)//it["batch_questions"] if it["batch_questions"] else 1
         calls+=len(checkpoints(steps)) if suite=="replay" else batches
         it["item_id"]=f"item-{i:04d}"
     return {"schema":"context-plan-v0.2","suite":suite,"split":split,"seed":seed,"steps":steps,"backend":backend,
-            "dataset_version":DATASET_VERSION,"items":items,"max_model_requests":calls,
+            "dataset_version":retrieval_hard_lab.HARD_DATASET_VERSION if suite=="retrieval_hard" else DATASET_VERSION,"items":items,"max_model_requests":calls,
             "scenario_groups":len({x['episode']['group_id'] for x in items}),
             "template_families":len({x['episode']['family'] for x in items}),
             "condition_records":len(items),"order":"seeded interleaving; sequential HTTP",
