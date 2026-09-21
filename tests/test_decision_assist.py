@@ -9,7 +9,7 @@ from unittest.mock import patch
 from assist.fixtures import dataset,LABELS
 from assist.core import advisory_state,direct_question,signal_questions
 from assist.runner import make_plan,execute
-from curator.client import DEFAULT,validate_config
+from curator.client import Client,DEFAULT,validate_config
 from curator.core import ExperimentError
 
 LUNA_CFG={
@@ -23,7 +23,7 @@ A2_CFG={
  "key_env":"A2AGENT_API_KEY","provider_label":"A2Agent relay -> DeepSeek V4 Flash","upstream_model_verified":False,
  "structured_mode":"json_object","input_per_million":.14,"output_per_million":.28,"price_verified":"test fixture",
  "budget_usd":.75,"reserve_per_call":.005,"socket_timeout_s":30,"run_deadline_s":600,"max_requests":120,
- "max_completion_tokens":256}
+ "max_completion_tokens":1024}
 
 def fake_jev(endpoint,body,key,timeout):
     answers={}
@@ -114,6 +114,18 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(s["jev_backend"]["requests"],2)
             self.assertEqual(s["llm_backend"]["requests"],4)
             self.assertTrue((Path(td)/"out/failures.jsonl").is_file())
+    def test_a2agent_length_finish_reason_is_explicit(self):
+        case=dataset("dev",seeds=(1,))[0]
+        q=direct_question(case)
+        def length_response(endpoint,body,key,timeout):
+            return {"model":"deepseek-v4-flash","choices":[{"finish_reason":"length","message":{"content":"","refusal":None}}],
+                    "usage":{"prompt_tokens":100,"completion_tokens":1024}}
+        with patch.dict(os.environ,{"A2AGENT_API_KEY":"TEST_A2"}):
+            client=Client(A2_CFG,live=True,send=length_response)
+            row=client.request(case["state"],q)
+            self.assertEqual(row["status"],"error")
+            self.assertEqual(row["error"],"llm_output_limit")
+            self.assertEqual(row["finish_reason"],"length")
     def test_fake_a2agent_json_object_request_shape(self):
         p=make_plan("quick","dev");p["items"]=p["items"][:1];p["case_records"]=1;p["original_groups"]=1
         p["jev_requests_max"]=2;p["llm_requests_max"]=4
@@ -126,12 +138,18 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(s["llm_backend"]["requests"],4)
             self.assertTrue(all(x[0]=="https://api.a2agent.me/v1/chat/completions" for x in seen))
             self.assertTrue(all(x[1]["response_format"]=={"type":"json_object"} for x in seen))
-            self.assertTrue(all("max_tokens" in x[1] and "max_completion_tokens" not in x[1] for x in seen))
+            self.assertTrue(all(x[1].get("max_tokens")==1024 and "max_completion_tokens" not in x[1] for x in seen))
     def test_neutral_arm_exists_in_report(self):
         p=make_plan("quick","dev")
         with tempfile.TemporaryDirectory() as td:
             s=execute(p,Path(td)/"out",DEFAULT,LUNA_CFG)
             self.assertIn("neutral",s["arms"])
+            report=(Path(td)/"out/report.md").read_text(encoding="utf-8")
+            self.assertIn("\n",report)
+            self.assertNotIn("\\n",report)
+            rows=(Path(td)/"out/results.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(rows),p["case_records"])
+            self.assertTrue(all(json.loads(line) for line in rows))
 
 if __name__=="__main__":
     unittest.main()
