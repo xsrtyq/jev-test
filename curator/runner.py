@@ -297,13 +297,14 @@ def execute(plan,out,cfg=None,live=False,budget=3000,question_language="auto",se
     result["backend_stop_reason"]=client.stop
     (out/"summary.json").write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     (out/"report.md").write_text(markdown(result),encoding="utf-8")
-    failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and (not r["model_result"]["metrics"]["all_required_evidence_present"] or r["model_result"]["selection"]["budget_overflow"]))]
     if plan["suite"]=="retrieval":
         failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and not r["model_result"]["topk_hit"])]
     elif plan["suite"]=="replay":
         failures=[r for r in rows if r["status"] in {"error","blocked"} or any(
             x.get("metrics") is not None and (not x["metrics"]["all_required_evidence_present"] or x.get("status")=="blocked_budget")
             for x in r["histories"]["model"])]
+    else:
+        failures=[r for r in rows if r["status"] in {"error","blocked"} or (r.get("model_result") and (not r["model_result"]["metrics"]["all_required_evidence_present"] or r["model_result"]["selection"]["budget_overflow"]))]
     (out/"failures.jsonl").write_text("".join(dumps(r)+"\n" for r in failures),encoding="utf-8")
     scan(out,client.key)
     return result
