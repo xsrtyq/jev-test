@@ -142,7 +142,7 @@ def report(summary):
               f"Jev requests/cost: {summary['jev_backend']['requests']} / USD {summary['jev_backend']['known_cost_usd']:.6f}.",
               f"LLM requests/cost: {summary['llm_backend']['requests']} / USD {summary['llm_backend']['known_cost_usd']:.6f}.",
               "","## Boundaries",""]+["- "+x for x in summary["caveats"]]
-    return "\\n".join(lines)+"\\n"
+    return "\n".join(lines)+"\n"
 
 def execute(plan,out,jev_cfg,llm_cfg,live_jev=False,live_llm=False,question_language="auto",jev_send=None,llm_send=None):
     out=Path(out)
@@ -167,13 +167,13 @@ def execute(plan,out,jev_cfg,llm_cfg,live_jev=False,live_llm=False,question_lang
     jev=Client(**jk);llm=Client(**lk);rows=[]
     with (out/"results.jsonl").open("x",encoding="utf-8") as fh:
         for item in plan["items"]:
-            row=run_item(item,jev,llm,question_language);rows.append(row);fh.write(dumps(row)+"\\n");fh.flush()
+            row=run_item(item,jev,llm,question_language);rows.append(row);fh.write(dumps(row)+"\n");fh.flush()
             if (live_jev and jev.stop) or (live_llm and llm.stop): break
     summary=summarize(plan,rows,jev,llm)
     (out/"summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2,allow_nan=False),encoding="utf-8")
     (out/"report.md").write_text(report(summary),encoding="utf-8")
     failures=[r for r in rows if r["status"] in {"error","partial"} or
               any(r["scores"].get(a)==0 and r["scores"].get("raw")==1 for a in ("jev_direct","jev_signals"))]
-    (out/"failures.jsonl").write_text("".join(dumps(r)+"\\n" for r in failures),encoding="utf-8")
+    (out/"failures.jsonl").write_text("".join(dumps(r)+"\n" for r in failures),encoding="utf-8")
     scan(out,jev.key);scan(out,llm.key)
     return summary
