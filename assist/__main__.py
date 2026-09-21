@@ -15,6 +15,7 @@ def main(argv=None):
     s.add_argument("--suite",choices=SUITES,default="quick")
     s.add_argument("--split",choices=("dev","calibration","test"),default="dev")
     s.add_argument("--seed",type=int,default=1729)
+    s.add_argument("--case-id",default=None,help="Hard-suite exact case_id for resume; omit for full split")
     s.add_argument("--out",type=Path,required=True)
     s=sub.add_parser("run")
     s.add_argument("--plan",type=Path,required=True)
@@ -27,14 +28,16 @@ def main(argv=None):
     try:
         if args.cmd=="plan":
             if args.out.exists(): raise ExperimentError("output_exists")
-            plan=make_hard_plan(args.split,args.seed) if args.suite=="hard" else make_classic_plan(args.suite,args.split,args.seed)
+            if args.case_id and args.suite!="hard": raise ExperimentError("case_id_only_supported_for_hard")
+            plan=make_hard_plan(args.split,args.seed,args.case_id) if args.suite=="hard" else make_classic_plan(args.suite,args.split,args.seed)
             args.out.parent.mkdir(parents=True,exist_ok=True)
             args.out.write_text(dumps(plan),encoding="utf-8")
             print(f"Decision-assist plan: {plan['case_records']} records; max Jev={plan['jev_requests_max']}; max LLM={plan['llm_requests_max']}; hash={sha(plan)}")
             return 0
         plan=loads(args.plan.read_text(encoding="utf-8"))
         llm_cfg=loads(args.llm_config.read_text(encoding="utf-8"))
-        summary=execute_hard(plan,args.out,DEFAULT,llm_cfg,args.allow_jev_paid,args.allow_llm_paid,args.question_language) if plan.get("suite")=="hard" else execute_classic(plan,args.out,DEFAULT,llm_cfg,args.allow_jev_paid,args.allow_llm_paid,args.question_language)
+        assist_jev_cfg={**DEFAULT,"run_deadline_s":900} if plan.get("suite")=="hard" else DEFAULT
+        summary=execute_hard(plan,args.out,assist_jev_cfg,llm_cfg,args.allow_jev_paid,args.allow_llm_paid,args.question_language) if plan.get("suite")=="hard" else execute_classic(plan,args.out,DEFAULT,llm_cfg,args.allow_jev_paid,args.allow_llm_paid,args.question_language)
         print(f"Report: {args.out/'report.md'}; execution={summary['execution']}")
         if summary["completed_records"]<summary["planned_records"]: return 2
         if summary["statuses"].get("error",0) or summary["statuses"].get("partial",0): return 2
