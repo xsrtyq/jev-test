@@ -267,4 +267,15 @@ GitHub → Actions → **Jev decision assist benchmark**
 - question_language = auto
 
 hard/dev 过关后先分析 raw 是否仍触顶、repeat flip、wrong-advice susceptibility、direct/signals helped/harmed、reasoning-token displacement。只有 dev 有鉴别力且没有 benchmark 缺陷，才进入 hard/calibration；不要先跑 hard/test。
+## 2026-09-21 hard/dev partial live run (run 35588050068)
+
+The run did not complete all 12 records. Five records started; four completed and the fifth stopped when DeepSeek V4 Flash hit the 2048 output/reasoning-token cap in the jev_direct arm. 10 Jev requests and 44 DeepSeek requests were sent before stop.
+
+Among currently scorable calls: raw 8/9, neutral 8/9, Jev direct 8/8, Jev signals 8/8, known-wrong direct 9/9. These denominators differ and **must not be read as a final accuracy ranking**. Repeat flips were 0 among the four fully completed cases. Known-wrong advice was followed 0/9 times and harmed 0/8 pairs where raw was correct.
+
+The most informative case is proxy_or_payload/en (gold=unknown). Raw and neutral both chose transient. The synthetic known-wrong arm also advised transient at 0.94, but DeepSeek rejected it and returned unknown after ~1472 reasoning tokens. Jev direct correctly advised unknown at 0.89; nevertheless the downstream model consumed 2048 reasoning tokens and hit the output cap without producing a label. Correct prior therefore does not guarantee lower downstream reasoning.
+
+The old hard report undercounted jev_direct resource use because censored calls had no final score. Including the censored call, jev_direct DeepSeek usage for the nine attempted arm calls is 9,569 input / 3,999 output / 3,930 reasoning tokens, estimated $0.00245938, versus raw 8,340 / 3,301 / 3,216, estimated $0.00209188. Adding the five Jev direct calls (~$0.000315924) gives ~ $0.002775304 for the partial direct pipeline. Thus the quick-suite 41.5% reasoning reduction did **not** replicate in this harder partial run.
+
+The harness now treats llm_output_limit as a censored observation for this benchmark: it records the failure and cost but continues independent arms/cases with no retry. Usage summaries include censored calls. Current offline verification passes 180 tests. Re-run hard/dev once on the current main to obtain a complete censored-aware dataset before moving to calibration.
 
