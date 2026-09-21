@@ -20,4 +20,6 @@ jobs:
           python3 jev_lab.py simulate --steps 100 --episodes 2000 --error-rate 0.01 --detection-rate 0.9 --out runs/simulation.json
           python3 -m assist plan --suite quick --split dev --out assist-plan.json
           python3 -m assist run --plan assist-plan.json --llm-config config/decision-llm-luna.json --out assist-dry
-          python3 -c "import json; r=json.load(open('runs/dry/summary.json')); assert r['ledger']['network_requests']==0; a=json.load(open('assist-dry/summary.json')); assert a['execution']=='offline'; assert a['jev_backend']['requests']==0; assert a['llm_backend']['requests']==0; print('NO NETWORK REQUESTS; NO REAL MODEL BENCHMARK')"
+          python3 -m assist plan --suite hard --split dev --out assist-hard-plan.json
+          python3 -m assist run --plan assist-hard-plan.json --llm-config config/decision-llm-a2agent-deepseek-v4-flash.json --out assist-hard-dry
+          python3 -c "import json; r=json.load(open('runs/dry/summary.json')); assert r['ledger']['network_requests']==0; a=json.load(open('assist-dry/summary.json')); h=json.load(open('assist-hard-dry/summary.json')); assert a['execution']=='offline'; assert h['execution']=='offline'; assert a['jev_backend']['requests']==0; assert a['llm_backend']['requests']==0; assert h['jev_backend']['requests']==0; assert h['llm_backend']['requests']==0; print('NO NETWORK REQUESTS; NO REAL MODEL BENCHMARK')"
