@@ -18,6 +18,12 @@ LUNA_CFG={
  "output_per_million":1.20,"price_verified":"test fixture","budget_usd":.75,
  "reserve_per_call":.005,"socket_timeout_s":30,"run_deadline_s":600,"max_requests":120,
  "max_completion_tokens":256,"reasoning_effort":"none"}
+A2_CFG={
+ "backend":"openai_compatible","model":"deepseek-v4-flash","endpoint":"https://api.a2agent.me/v1/chat/completions",
+ "key_env":"A2AGENT_API_KEY","provider_label":"A2Agent relay -> DeepSeek V4 Flash","upstream_model_verified":False,
+ "structured_mode":"json_object","input_per_million":.14,"output_per_million":.28,"price_verified":"test fixture",
+ "budget_usd":.75,"reserve_per_call":.005,"socket_timeout_s":30,"run_deadline_s":600,"max_requests":120,
+ "max_completion_tokens":256}
 
 def fake_jev(endpoint,body,key,timeout):
     answers={}
@@ -77,6 +83,15 @@ class AssistExecutionTests(unittest.TestCase):
         self.assertEqual(validate_config(dict(LUNA_CFG))["reasoning_effort"],"none")
         with self.assertRaises(ExperimentError):
             validate_config({**LUNA_CFG,"reasoning_effort":"invented"})
+    def test_a2agent_config_is_pinned_and_json_object(self):
+        cfg=validate_config(dict(A2_CFG))
+        self.assertEqual(cfg["model"],"deepseek-v4-flash")
+        self.assertEqual(cfg["structured_mode"],"json_object")
+        self.assertFalse(cfg["upstream_model_verified"])
+        with self.assertRaises(ExperimentError):
+            validate_config({**A2_CFG,"model":"deepseek-v4-pro"})
+        with self.assertRaises(ExperimentError):
+            validate_config({**A2_CFG,"endpoint":"https://example.com/v1/chat/completions"})
     def test_paid_llm_requires_real_jev(self):
         p=make_plan("quick","dev")
         with tempfile.TemporaryDirectory() as td:
@@ -99,6 +114,19 @@ class AssistExecutionTests(unittest.TestCase):
             self.assertEqual(s["jev_backend"]["requests"],2)
             self.assertEqual(s["llm_backend"]["requests"],4)
             self.assertTrue((Path(td)/"out/failures.jsonl").is_file())
+    def test_fake_a2agent_json_object_request_shape(self):
+        p=make_plan("quick","dev");p["items"]=p["items"][:1];p["case_records"]=1;p["original_groups"]=1
+        p["jev_requests_max"]=2;p["llm_requests_max"]=4
+        seen=[]
+        def relay(endpoint,body,key,timeout):
+            seen.append((endpoint,body,key))
+            return fake_llm(endpoint,body,key,timeout)
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ,{"TYPESAFE_API_KEY":"TEST_JEV","A2AGENT_API_KEY":"TEST_A2"}):
+            s=execute(p,Path(td)/"out",DEFAULT,A2_CFG,True,True,jev_send=fake_jev,llm_send=relay)
+            self.assertEqual(s["llm_backend"]["requests"],4)
+            self.assertTrue(all(x[0]=="https://api.a2agent.me/v1/chat/completions" for x in seen))
+            self.assertTrue(all(x[1]["response_format"]=={"type":"json_object"} for x in seen))
+            self.assertTrue(all("max_tokens" in x[1] and "max_completion_tokens" not in x[1] for x in seen))
     def test_neutral_arm_exists_in_report(self):
         p=make_plan("quick","dev")
         with tempfile.TemporaryDirectory() as td:
