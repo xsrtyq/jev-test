@@ -36,6 +36,11 @@ on:
         type: choice
         options: [auto, zh, en]
         default: auto
+      case_id:
+        description: Optional exact hard-suite case_id for resume; leave blank for full split
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -58,7 +63,11 @@ jobs:
         env:
           SUITE: ${{ inputs.suite }}
           SPLIT: ${{ inputs.split }}
-        run: python3 -m assist plan --suite "$SUITE" --split "$SPLIT" --out assist-plan.json
+          CASE_ID: ${{ inputs.case_id }}
+        run: |
+          args=(--suite "$SUITE" --split "$SPLIT" --out assist-plan.json)
+          if [ -n "$CASE_ID" ]; then args+=(--case-id "$CASE_ID"); fi
+          python3 -m assist plan "${args[@]}"
       - name: Run bounded paired benchmark
         env:
           TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
