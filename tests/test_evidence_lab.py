@@ -84,7 +84,7 @@ class Selection(unittest.TestCase):
     def test_shards_are_bounded(self):
         from curator.core import size
         for s in r.shard_states(self.state):
-            self.assertLessEqual(len(s["blocks"]), 32); self.assertLessEqual(size(s), r.SHARD_BYTES)
+            self.assertLessEqual(len(s["blocks"]), r.SHARD_BLOCKS); self.assertLessEqual(size(s), r.SHARD_BYTES)
     def test_oversized_single_block_rejected(self):
         s = deepcopy(self.state); s["blocks"][0]["text"] = "x" * 30000
         with self.assertRaises(ExperimentError): r.shard_states(s)
@@ -109,7 +109,17 @@ class Selection(unittest.TestCase):
         with self.assertRaises(ExperimentError): r.pack(s, [bid])
     def test_question_requests_counterevidence(self):
         qs, _ = r.relevance_questions(self.state)
-        self.assertTrue(all("contradictions" in q["instructions"] for q in qs.values()))
+        self.assertTrue(all("genuine contradiction" in q["instructions"] for q in qs.values()))
+    def test_anchor_questions_are_binding_specific_and_gold_free(self):
+        qs, _ = r.anchor_questions(self.state)
+        self.assertTrue(all("CURRENT object/revision/scope/identity binding" in q["instructions"] for q in qs.values()))
+        self.assertNotIn("required_ids", dumps(qs))
+    def test_64_block_jev_request_shapes_fit_guard(self):
+        from curator.core import size
+        for shard in r.shard_states(self.state):
+            phase = r._phase_state(shard, "test anchor context")
+            self.assertLessEqual(size(build_body("jev", phase, r.anchor_questions(phase)[0])), LIMITS["jev"]["request_bytes"])
+            self.assertLessEqual(size(build_body("jev", phase, r.relevance_questions(phase)[0])), LIMITS["jev"]["request_bytes"])
     def test_questions_never_include_gold(self):
         qs, _ = r.relevance_questions(self.state)
         self.assertNotIn("required_ids", dumps(qs))
@@ -210,8 +220,8 @@ class Protocol(unittest.TestCase):
 
 class Execution(unittest.TestCase):
     def test_plan_counts(self):
-        for stage, cap in (("smoke", (18,12)), ("retrieval128", (90,0)), ("retrieval256", (162,0)),
-                           ("e2e128", (108,144)), ("e2e256", (180,144))):
+        for stage, cap in (("smoke", (21,12)), ("retrieval128", (108,0)), ("retrieval256", (180,0)),
+                           ("e2e128", (126,144)), ("e2e256", (198,144))):
             p = r.make_plan(stage)
             self.assertEqual(tuple(p["request_caps"].values()), cap)
     def test_all_plans_preflight_raw_sizes(self):
@@ -245,10 +255,10 @@ class Execution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, TEST_ENV):
             p = r.make_plan(); out = Path(td)/"out"
             s = r.execute(p, out, live_jev=True, live_llm=True, send=fake_transport)
-            self.assertEqual(s["newly_sent_requests"], 30)
+            self.assertEqual(s["newly_sent_requests"], 33)
             rows = [json.loads(x) for x in (out/"calls.jsonl").read_text().splitlines()]
-            self.assertEqual(sum(x["event"]=="result" for x in rows),30)
-            self.assertEqual(sum(x["event"]=="intent" for x in rows),30)
+            self.assertEqual(sum(x["event"]=="result" for x in rows),33)
+            self.assertEqual(sum(x["event"]=="intent" for x in rows),33)
             self.assertEqual(s["stop_reason"],None)
     def test_pipeline_quantiles_use_sum_not_pool(self):
         with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, TEST_ENV):
@@ -270,7 +280,7 @@ class Execution(unittest.TestCase):
             r.execute(p, first, live_jev=True, live_llm=True, send=fake_transport)
             def never(*a): self.fail("resume reissued measured request")
             s = r.execute(p, second, live_jev=True, live_llm=True, send=never, resume=first)
-            self.assertEqual(s["newly_sent_requests"], 0); self.assertEqual(s["reused_receipts"], 30)
+            self.assertEqual(s["newly_sent_requests"], 0); self.assertEqual(s["reused_receipts"], 33)
     def test_resume_changed_plan_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             r.execute(r.make_plan(), Path(td)/"one")
