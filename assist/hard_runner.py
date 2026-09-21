@@ -20,7 +20,7 @@ def _rotated_orders(index):
     shifts=(index % n,(index+2) % n)
     return [arms[s:]+arms[:s] for s in shifts]
 
-def make_plan(split="dev",seed=1729):
+def make_plan(split="dev",seed=1729,case_id=None):
     if split not in {"dev","calibration","test"}: raise ExperimentError("invalid_hard_assist_split")
     cases=dataset(split)
     # Fixtures already deterministic; plan order is a stable hash sort to avoid hand-picked sequencing.
@@ -28,10 +28,13 @@ def make_plan(split="dev",seed=1729):
     items=[]
     for i,case in enumerate(cases):
         items.append({"item_id":f"hard-assist-{i:04d}","case":case,"arm_orders":_rotated_orders(i),"repeats":REPEATS})
+    if case_id:
+        items=[x for x in items if x["case"]["case_id"]==case_id]
+        if len(items)!=1: raise ExperimentError("unknown_hard_resume_case")
     return {"schema":"decision-assist-hard-plan-v0.2","suite":"hard","split":split,"seed":seed,
             "dataset_version":DATASET_VERSION,"items":items,"case_records":len(items),
             "original_groups":len({x["case"]["group_id"] for x in items}),
-            "arms":list(HARD_ARMS),"repeats":REPEATS,
+            "arms":list(HARD_ARMS),"repeats":REPEATS,"case_filter":case_id,
             "jev_requests_max":2*len(items),"llm_requests_max":len(items)*REPEATS*len(HARD_ARMS),
             "arm_order":"deterministic cyclic counterbalancing frozen in plan",
             "wrong_advice":"synthetic gold-aware stressor; never counted as Jev output",
