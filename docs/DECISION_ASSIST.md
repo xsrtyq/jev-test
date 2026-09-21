@@ -181,3 +181,26 @@ A2Agent 的 API Key 只放 GitHub Secret，不写入配置、日志或 artifact�
     deterministic safety / permission policy
 
 上面的两个 Jev 节点必须分别证明价值；任何一个都不拥有权限、部署、删除、验收或不可逆动作的最终控制权。
+
+## 2026-09-21 quick/dev live result (run 35583769480)
+
+9/9 case records completed; all 18 Jev requests and all 36 A2Agent DeepSeek V4 Flash requests succeeded. Every arm scored 9/9 on the provisional quick labels:
+- raw = 9/9
+- neutral = 9/9
+- jev_direct = 9/9
+- jev_signals = 9/9
+
+Therefore this quick suite validates the protocol but has a ceiling effect: it provides **no evidence yet that Jev improves or harms final decision accuracy**. Paired helped/harmed counts are 0/0 for every assisted arm because raw is already perfect.
+
+Jev direct diagnostic Choice was also 9/9. Individual Noul signals were not identical across language variants; e.g. `external_side_effect` for the same revoked-write family ranged from about 0.29/0.34 (mixed/zh) to 0.82 (en), while the direct final Choice remained stable. Signal calibration/language robustness therefore remains an open question.
+
+Measured model-side usage using the configured public list prices:
+- Jev total: 20,660 input + 1,086 output tokens; known estimate $0.00086772.
+- DeepSeek raw: 5,879 input; 2,450 output of which 2,376 were reported reasoning tokens; $0.00150906; p50 ≈ 3.99 s.
+- DeepSeek neutral: 7,267 input; 2,462 output / 2,389 reasoning; $0.00170674; p50 ≈ 3.82 s.
+- DeepSeek + Jev direct: 7,195 DeepSeek input; 1,468 output / 1,390 reasoning; DeepSeek-only $0.00141834; DeepSeek p50 ≈ 3.31 s.
+- DeepSeek + Jev signals: 7,118 input; 2,067 output / 1,993 reasoning; DeepSeek-only $0.00157528; DeepSeek p50 ≈ 4.26 s.
+
+The interesting exploratory signal is **reasoning-token displacement**: the direct Jev advisory coincided with about 41.5% fewer DeepSeek reasoning tokens than raw and lower DeepSeek latency. However, after adding the Jev call itself, the estimated direct pipeline cost was about $0.00182725 vs raw $0.00150906 across these 9 cases. With the user's A2Agent group discount the absolute relay bill may be lower; do not mix that billing discount with model-capability claims.
+
+Because accuracy is at ceiling, do not run quality/dev unchanged just to collect more translations/order seeds. The next decision-assist benchmark should increase semantic difficulty/headroom: conflicting evidence, missing information, misleading assistant claims, near-neighbor failure classes, and cases where both `inspect_more` and an apparently confident direct label are plausible. Preserve raw/neutral/direct/signals pairing and keep a fresh calibration/test split.
