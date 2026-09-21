@@ -11,7 +11,7 @@ on:
         description: Experiment suite (start with quick)
         required: true
         type: choice
-        options: [quick, quality, robustness, scaling, fanout, replay]
+        options: [quick, quality, robustness, retrieval, scaling, fanout, replay]
         default: quick
       split:
         description: Dataset split (do not tune prompts on test)
