@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import random
+import statistics
 from curator.client import Client,validate_config,scan
 from curator.core import ExperimentError,dumps,sha
 from .fixtures import dataset,DATASET_VERSION
@@ -93,6 +94,21 @@ def _paired(rows,arm):
             "both_correct":sum(a==1 and b==1 for a,b in pairs),
             "both_wrong":sum(a==0 and b==0 for a,b in pairs)}
 
+def _pct(values,p):
+    if not values:return None
+    a=sorted(values);k=(len(a)-1)*p;i=int(k)
+    return a[i]+(a[min(i+1,len(a)-1)]-a[i])*(k-i)
+
+def _call_stats(calls):
+    sent=[x for x in calls if x and x.get("request_sent")]
+    wall=[x["wall_ms"] for x in sent if x.get("wall_ms") is not None]
+    return {"requests":len(sent),
+            "input_tokens":sum((x.get("usage") or {}).get("input_tokens",0) for x in sent),
+            "output_tokens":sum((x.get("usage") or {}).get("output_tokens",0) for x in sent),
+            "reasoning_tokens":sum((x.get("usage") or {}).get("reasoning_tokens",0) for x in sent),
+            "known_cost_usd":sum(x.get("cost_usd") or 0 for x in sent),
+            "p50_client_ms":_pct(wall,.5),"p95_client_ms":_pct(wall,.95)}
+
 def summarize(plan,rows,jev,llm):
     arms={a:{"usable":sum(r["scores"].get(a) is not None for r in rows),"accuracy":_accuracy(rows,a)} for a in ARMS}
     paired={a:_paired(rows,a) for a in ("neutral","jev_direct","jev_signals")}
@@ -105,6 +121,13 @@ def summarize(plan,rows,jev,llm):
         rr=[r for r in rows if r["task_type"]==task]
         by_task[task]={a:_accuracy(rr,a) for a in ARMS}
     jev_direct=[int(r["jev"]["direct_advice"]["choice"]==r["gold"]) for r in rows if r["jev"]["direct_advice"]]
+    arm_usage={a:_call_stats([r["llm_calls"].get(a) for r in rows]) for a in ARMS}
+    pipeline_usage={
+        "raw":dict(arm_usage["raw"]),
+        "neutral":dict(arm_usage["neutral"]),
+        "jev_direct":_call_stats([x for r in rows for x in (r["jev"]["direct_call"],r["llm_calls"].get("jev_direct"))]),
+        "jev_signals":_call_stats([x for r in rows for x in (r["jev"]["signals_call"],r["llm_calls"].get("jev_signals"))])
+    }
     def backend_stats(client,which):
         calls=[]
         for r in rows:
@@ -119,6 +142,7 @@ def summarize(plan,rows,jev,llm):
             "execution":"live_both" if jev.live and llm.live else "jev_only" if jev.live else "offline",
             "planned_records":len(plan["items"]),"completed_records":len(rows),"statuses":dict(Counter(r["status"] for r in rows)),
             "arms":arms,"paired_vs_raw":paired,"by_language":by_language,"by_task":by_task,
+            "llm_arm_usage":arm_usage,"pipeline_usage":pipeline_usage,
             "jev_direct_diagnostic_accuracy":None if not jev_direct else sum(jev_direct)/len(jev_direct),
             "jev_backend":backend_stats(jev,"jev"),"llm_backend":backend_stats(llm,"llm"),
             "caveats":["Synthetic authored labels are provisional and correlated across languages/seeds.",
@@ -138,6 +162,14 @@ def report(summary):
               "|arm|pairs|helped|harmed|both correct|both wrong|","|---|---:|---:|---:|---:|---:|"]
     for arm,v in summary["paired_vs_raw"].items():
         lines.append(f"|{arm}|{v['pairs']}|{v['helped']}|{v['harmed']}|{v['both_correct']}|{v['both_wrong']}|")
+    lines += ["","## Per-arm usage (relay/model only)","",
+              "|arm|input|output|reasoning|cost USD|p50 ms|p95 ms|","|---|---:|---:|---:|---:|---:|---:|"]
+    for arm,v in summary["llm_arm_usage"].items():
+        lines.append(f"|{arm}|{v['input_tokens']}|{v['output_tokens']}|{v['reasoning_tokens']}|{v['known_cost_usd']:.6f}|{fmt(v['p50_client_ms'])}|{fmt(v['p95_client_ms'])}|")
+    lines += ["","## End-to-end advisory pipeline usage","",
+              "|arm|cost USD|p50 ms|p95 ms|","|---|---:|---:|---:|"]
+    for arm,v in summary["pipeline_usage"].items():
+        lines.append(f"|{arm}|{v['known_cost_usd']:.6f}|{fmt(v['p50_client_ms'])}|{fmt(v['p95_client_ms'])}|")
     lines += ["",f"Jev direct diagnostic accuracy: {fmt(summary['jev_direct_diagnostic_accuracy'])}.",
               f"Jev requests/cost: {summary['jev_backend']['requests']} / USD {summary['jev_backend']['known_cost_usd']:.6f}.",
               f"LLM requests/cost: {summary['llm_backend']['requests']} / USD {summary['llm_backend']['known_cost_usd']:.6f}.",
