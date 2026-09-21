@@ -73,3 +73,21 @@ retrieval/dev 已完成，不要因该 run 的红色 UI 再付费重跑；红色
 - paid = 勾选
 
 这是不同的4个主题族，用来检查 dev 的 Jev top-1 12/12 是否能泛化。不要先跑 test；如果 calibration 暴露问题，只允许在 dev/calibration 范围分析和改进，然后重建新的未见 test 版本。若 calibration 仍强，再冻结一次并运行 retrieval/test。
+
+## 当前下一步（retrieval calibration 之后）
+
+旧的 retrieval/dev + calibration 已经说明：明显的路径/ID 查询可以被正确的 deterministic structured 检索解决，因此原 retrieval/test 暂停，不再为它花额度。
+
+新的 harder benchmark 已实现为 suite = retrieval_hard：
+
+- 每个场景 64 个 archive blocks；
+- 大量近似主题、错误理由、其他 path/ID 干扰；
+- query 问“为什么拒绝某方案 / 为什么做出这个决定”，不是直接问某个历史路径；
+- deterministic hybrid 先取 top16 候选；
+- Jev 只在这 16 条上做语义 rerank；
+- 分开统计 candidate16 recall、deterministic top4、Jev top1/top4。
+
+下一次 Context Curator 方向应先跑 retrieval_hard / dev / auto。不要跑旧 retrieval/test。
+
+另外，Jev → LLM 的决策辅助已经拆成独立 workflow；见 docs/DECISION_ASSIST.md。它不属于 Context Curator 指标，也不会用 retrieval 结果替代。
+
