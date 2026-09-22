@@ -310,4 +310,24 @@ class Execution(unittest.TestCase):
             with self.assertRaises(ExperimentError): r.execute(r.make_plan(),td)
 
 
+class Regression(unittest.TestCase):
+    def test_fixed_v05_fixture_hash(self):
+        from evidence_lab.regression import fixed_case, EXPECTED_STATE_HASH
+        self.assertEqual(fixed_case()["state_hash"], EXPECTED_STATE_HASH)
+
+    def test_fixture_version_is_decoupled_from_code_version(self):
+        from evidence_lab.fixtures import FIXTURE_VERSION
+        a=make_case("release","positive","en",128,601,FIXTURE_VERSION)
+        b=make_case("release","positive","en",128,601,FIXTURE_VERSION)
+        self.assertEqual(a["state_hash"],b["state_hash"])
+
+    def test_regression_dry_run_has_three_strategies_and_no_network(self):
+        from evidence_lab.regression import run
+        with tempfile.TemporaryDirectory() as td:
+            s=run(Path(td)/"out",False)
+            self.assertEqual(s["newly_sent_requests"],0)
+            self.assertEqual([x["name"] for x in s["strategies"]],["legacy_v05","short_no_anchor","relation_anchor_v06"])
+            self.assertIsNone(s["stop_reason"])
+
+
 if __name__ == "__main__": unittest.main()
