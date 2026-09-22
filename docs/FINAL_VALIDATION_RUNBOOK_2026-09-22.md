@@ -46,20 +46,22 @@ Actions → **Jev fixed-input retrieval regression**
 
 如果 relation_anchor_v06 仍失败：**冻结 context route，不继续调v0.7。**
 
-### Gate 2 — v0.6完整 retrieval128/dev
+### Gate 2 — simplest-sufficient retrieval128/dev
 
-Actions → **Jev evidence-first v0.6**
+Gate 1 显示 short_no_anchor 在完全相同失败输入上也能得到完整最终证据包，并且调用/输入/费用约为 relation-anchor 的一半。因此先跑更便宜方案。
 
-- stage = retrieval128
-- split = dev
+Actions → **Jev short-no-anchor retrieval gate**
+
 - confirm_jev_paid = true
-- confirm_llm_paid = false
-- case_id = 空
-- resume_run = 空
 
-上限108次Jev，0次Flash。
+上限54次Jev，0次Flash，18个稳定dev案例。
 
-门槛：18/18 final packet包含全部必要证据。任何miss先停止，不进入下游实验。
+门槛：
+- 若18/18 final packet包含全部必要证据：优先保留简单方案，暂不跑完整relation-anchor；
+- 若任何case遗漏最终必要证据：再运行 **Jev evidence-first v0.6** / retrieval128 / dev（108次Jev）并精确比较相同fixture；
+- 不因为local recall小于1直接判失败，只要deterministic pair/dependency closure后的最终原文包完整；真实无pair历史由后续coding continuation覆盖。
+
+任何最终miss在完成上述同输入比较前都不进入更大的下游实验。
 
 ### Gate 3 — 极小 coding continuation smoke
 
