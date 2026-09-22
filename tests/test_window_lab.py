@@ -11,6 +11,12 @@ class Fixtures(unittest.TestCase):
         t=cache_trace()
         self.assertEqual(len(t["windows"]),3)
         self.assertTrue(all(len(w["events"])==4 and len(w["turns"])==4 for w in t["windows"]))
+    def test_cache_probe_has_large_arm_isolated_stable_prefix(self):
+        from window_lab.cache_bench import system
+        a=system("append_all")["content"]; b=system("window_jev")["content"]
+        self.assertGreater(len(a.encode()),16000)
+        self.assertNotEqual(a,b)
+        self.assertIn("synthetic_tool_255",a)
     def test_coding_tasks_stable(self):
         tasks=coding_tasks()
         self.assertEqual([x["task_id"] for x in tasks],["rounding-continuation","retry-continuation"])
