@@ -28,12 +28,32 @@ def jev(g,task):
     return [x for _,x in ranked[:TOP_K]]
 
 def hidden_test(task_id,patch_id):
+    """Execute predetermined candidate behavior against hidden deterministic cases.
+
+    The model chooses an ID; it never supplies executable code to CI.
+    """
     if task_id=="rounding-continuation":
-        # Predetermined candidate B is the only implementation satisfying both HALF_UP and per-line constraints.
-        return patch_id=="B"
+        from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP
+        values=[Decimal("1.005"),Decimal("2.005")]
+        if patch_id=="A":
+            got=sum(Decimal(str(round(float(v),2))) for v in values)
+        elif patch_id=="B":
+            got=sum(v.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP) for v in values)
+        elif patch_id=="C":
+            got=sum(values).quantize(Decimal("0.01"),rounding=ROUND_HALF_EVEN)
+        elif patch_id=="D":
+            got=sum(values).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
+        else:
+            return False
+        return got==Decimal("3.02")
     if task_id=="retry-continuation":
-        # Candidate B is the only one that checks provider state and preserves the persisted idempotency key.
-        return patch_id=="B"
+        def action(pid,status):
+            if pid=="A": return ("resend","new_key")
+            if pid=="B": return ("query_status","persisted_key") if status=="unknown" else ("resend","persisted_key")
+            if pid=="C": return ("resend","persisted_key")
+            if pid=="D": return ("stop","persisted_key")
+            return ("invalid","")
+        return action(patch_id,"unknown")==("query_status","persisted_key") and action(patch_id,"uncharged")==("resend","persisted_key")
     raise ExperimentError("unknown_coding_task")
 
 def prompt(task,evidence,strategy):
