@@ -11,6 +11,10 @@ import random
 from curator.core import sha, validate_state
 from . import VERSION
 
+# Dataset identity is intentionally independent of implementation VERSION.
+# v0.6 was the first protocol version whose fixtures must remain stable across later code changes.
+FIXTURE_VERSION = "evidence-lab-0.6.0"
+
 # family, split, topic zh/en, action zh/en, positive zh/en, negative zh/en
 SPECS = (
     ("release", "dev", "发布许可", "release authorization", "将沙盒发布列为可执行", "mark the sandbox release ready",
@@ -41,12 +45,12 @@ def simulate(current_revision: str, facts: dict[tuple[str, str], bool], scope: s
     return "unknown" if value is None else "allow" if value else "deny"
 
 
-def make_case(family: str, mode: str, language: str, n: int, seed: int = 601) -> dict:
+def make_case(family: str, mode: str, language: str, n: int, seed: int = 601, fixture_version: str = FIXTURE_VERSION) -> dict:
     if mode not in MODES or language not in LANGUAGES or n not in (64, 128, 256):
         raise ValueError("invalid_fixture_condition")
     spec = next(s for s in SPECS if s[0] == family)
     _, split, topic_zh, topic_en, action_zh, action_en, pos_zh, pos_en, neg_zh, neg_en = spec
-    rng = random.Random(f"{VERSION}:{family}:{mode}:{seed}")
+    rng = random.Random(f"{fixture_version}:{family}:{mode}:{seed}")
     # Same opaque IDs, placement and facts across paired languages/archive sizes.
     entity = "obj-" + sha([family, mode, seed])[:8]
     rev = "rev-" + sha([seed, mode, family, "now"])[:8]
@@ -143,8 +147,8 @@ def make_case(family: str, mode: str, language: str, n: int, seed: int = 601) ->
             "label_status": "declared_simulator_rule_not_independent_human_gold", "version": VERSION}
 
 
-def cases(split="dev", n=128, seed=601):
+def cases(split="dev", n=128, seed=601, fixture_version: str = FIXTURE_VERSION):
     if split not in ("dev", "calibration", "test"):
         raise ValueError("invalid_split")
-    return [make_case(s[0], mode, lang, n, seed) for s in SPECS if s[1] == split
+    return [make_case(s[0], mode, lang, n, seed, fixture_version) for s in SPECS if s[1] == split
             for mode in MODES for lang in LANGUAGES]
