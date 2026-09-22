@@ -1,0 +1,64 @@
+name: Jev coding continuation smoke
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_jev_paid:
+        description: Authorize bounded TypeSafe API usage (2 requests maximum)
+        type: boolean
+        required: true
+        default: false
+      confirm_llm_paid:
+        description: Authorize bounded A2Agent Flash usage (6 requests maximum)
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: jev-coding-continuation-smoke-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  experiment:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Offline tests
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -W error -m py_compile window_lab/*.py
+      - name: Run bounded continuation smoke
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
+          JEV_LIVE: ${{ inputs.confirm_jev_paid }}
+          LLM_LIVE: ${{ inputs.confirm_llm_paid }}
+        run: |
+          args=(--out coding-continuation-run)
+          if [ "$JEV_LIVE" = true ]; then args+=(--allow-jev-paid); fi
+          if [ "$LLM_LIVE" = true ]; then args+=(--allow-llm-paid); fi
+          python3 -m window_lab.coding_bench "${args[@]}"
+      - name: Scan and publish
+        if: always()
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
+        run: |
+          if [ -d coding-continuation-run ]; then
+            python3 - <<'PY'
+          import os
+          from evidence_lab.gateway import scan
+          scan('coding-continuation-run',(os.environ.get('TYPESAFE_API_KEY',''),os.environ.get('A2AGENT_API_KEY','')))
+          PY
+            cat coding-continuation-run/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && hashFiles('coding-continuation-run/report.md') != ''
+        with:
+          name: jev-coding-continuation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coding-continuation-run/
+          retention-days: 30
+          if-no-files-found: error
