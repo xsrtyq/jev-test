@@ -330,4 +330,22 @@ class Regression(unittest.TestCase):
             self.assertIsNone(s["stop_reason"])
 
 
+class ShortGate(unittest.TestCase):
+    def test_short_gate_plan_is_18_cases_54_requests(self):
+        from evidence_lab.short_gate import EXPECTED_CASES, EXPECTED_JEV_REQUESTS
+        self.assertEqual(EXPECTED_CASES,18)
+        self.assertEqual(EXPECTED_JEV_REQUESTS,54)
+
+    def test_short_gate_dry_run_no_network(self):
+        from evidence_lab.short_gate import run
+        with tempfile.TemporaryDirectory() as td:
+            s=run(Path(td)/"out",False)
+            self.assertEqual(s["execution"],"offline_no_model_results")
+            self.assertEqual(s["completed_cases"],18)
+            self.assertEqual(s["newly_sent_requests"],0)
+            self.assertIsNone(s["complete_cases"])
+            self.assertFalse(s["gate_passed"])
+            self.assertIsNone(s["stop_reason"])
+
+
 if __name__ == "__main__": unittest.main()
