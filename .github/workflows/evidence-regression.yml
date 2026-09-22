@@ -1,0 +1,52 @@
+name: Jev fixed-input retrieval regression
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_jev_paid:
+        description: Authorize bounded TypeSafe API usage (14 requests maximum)
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: jev-fixed-regression-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  experiment:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Offline verification
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -W error -m py_compile evidence_lab/*.py
+      - name: Run fixed regression
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          LIVE: ${{ inputs.confirm_jev_paid }}
+        run: |
+          args=(--out regression-run)
+          if [ "$LIVE" = true ]; then args+=(--allow-jev-paid); fi
+          python3 -m evidence_lab.regression "${args[@]}"
+      - name: Scan artifacts
+        if: always()
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+        run: |
+          if [ -d regression-run ]; then python3 -m evidence_lab scan regression-run; fi
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f regression-run/report.md ]; then cat regression-run/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && hashFiles('regression-run/report.md') != ''
+        with:
+          name: jev-fixed-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: regression-run/
+          retention-days: 30
+          if-no-files-found: error
