@@ -48,11 +48,7 @@ jobs:
           A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
         run: |
           if [ -d window-cache-run ]; then
-            python3 - <<'PY'
-          import os
-          from evidence_lab.gateway import scan
-          scan('window-cache-run',(os.environ.get('TYPESAFE_API_KEY',''),os.environ.get('A2AGENT_API_KEY','')))
-          PY
+            python3 -c "import os; from evidence_lab.gateway import scan; scan('window-cache-run',(os.environ.get('TYPESAFE_API_KEY',''),os.environ.get('A2AGENT_API_KEY','')))"
             cat window-cache-run/report.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
