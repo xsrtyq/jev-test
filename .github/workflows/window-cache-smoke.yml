@@ -1,0 +1,64 @@
+name: Jev window/cache economics smoke
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_jev_paid:
+        description: Authorize bounded TypeSafe API usage (2 requests maximum)
+        type: boolean
+        required: true
+        default: false
+      confirm_llm_paid:
+        description: Authorize bounded A2Agent Flash usage (48 requests maximum)
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: jev-window-cache-smoke-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  experiment:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Offline tests
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -W error -m py_compile window_lab/*.py
+      - name: Run bounded cache probe
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
+          JEV_LIVE: ${{ inputs.confirm_jev_paid }}
+          LLM_LIVE: ${{ inputs.confirm_llm_paid }}
+        run: |
+          args=(--out window-cache-run)
+          if [ "$JEV_LIVE" = true ]; then args+=(--allow-jev-paid); fi
+          if [ "$LLM_LIVE" = true ]; then args+=(--allow-llm-paid); fi
+          python3 -m window_lab.cache_bench "${args[@]}"
+      - name: Scan and publish
+        if: always()
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          A2AGENT_API_KEY: ${{ inputs.confirm_llm_paid && secrets.A2AGENT_API_KEY || '' }}
+        run: |
+          if [ -d window-cache-run ]; then
+            python3 - <<'PY'
+          import os
+          from evidence_lab.gateway import scan
+          scan('window-cache-run',(os.environ.get('TYPESAFE_API_KEY',''),os.environ.get('A2AGENT_API_KEY','')))
+          PY
+            cat window-cache-run/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && hashFiles('window-cache-run/report.md') != ''
+        with:
+          name: jev-window-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          path: window-cache-run/
+          retention-days: 30
+          if-no-files-found: error
