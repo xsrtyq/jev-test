@@ -1,0 +1,51 @@
+name: Jev short-no-anchor retrieval gate
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_jev_paid:
+        description: Authorize bounded TypeSafe API usage (54 requests maximum)
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: jev-short-retrieval-gate-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  experiment:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Offline verification
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -W error -m py_compile evidence_lab/*.py
+      - name: Run simplest-sufficient gate
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+          LIVE: ${{ inputs.confirm_jev_paid }}
+        run: |
+          args=(--out short-gate-run)
+          if [ "$LIVE" = true ]; then args+=(--allow-jev-paid); fi
+          python3 -m evidence_lab.short_gate "${args[@]}"
+      - name: Scan and publish
+        if: always()
+        env:
+          TYPESAFE_API_KEY: ${{ inputs.confirm_jev_paid && secrets.TYPESAFE_API_KEY || '' }}
+        run: |
+          if [ -d short-gate-run ]; then
+            python3 -m evidence_lab scan short-gate-run
+            cat short-gate-run/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && hashFiles('short-gate-run/report.md') != ''
+        with:
+          name: jev-short-retrieval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: short-gate-run/
+          retention-days: 30
+          if-no-files-found: error
